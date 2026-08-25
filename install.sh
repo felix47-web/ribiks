@@ -4,41 +4,43 @@ set -e
 
 RIBIKS_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR="$RIBIKS_DIR/venv"
-BIN_DIR="$HOME/.local/bin"
+BIN_DIR="$PREFIX/bin"
 
-echo "╔══════════════════════════════════════╗"
-echo "║       Installing Ribiks...           ║"
-echo "╚══════════════════════════════════════╝"
+echo ""
+echo "  ╔══════════════════════════════════════╗"
+echo "  ║       Installing Ribiks...           ║"
+echo "  ╚══════════════════════════════════════╝"
+echo ""
+
+echo "[*] Checking Python..."
+if ! command -v python3 &>/dev/null; then
+    echo "[!] Python3 not found. Install with: pkg install python"
+    exit 1
+fi
 
 echo "[*] Creating virtual environment..."
-python3 -m venv "$VENV_DIR" 2>/dev/null || python3 -m venv "$VENV_DIR" --without-pip
+python3 -m venv "$VENV_DIR" || {
+    echo "[!] venv failed, trying without pip..."
+    python3 -m venv "$VENV_DIR" --without-pip
+}
 
 echo "[*] Installing dependencies..."
-"$VENV_DIR/bin/pip" install -q --upgrade pip 2>/dev/null || true
-"$VENV_DIR/bin/pip" install -q telethon openai
+"$VENV_DIR/bin/pip" install --upgrade pip 2>/dev/null || true
+"$VENV_DIR/bin/pip" install telethon requests
 
-echo "[*] Installing ribiks package..."
-"$VENV_DIR/bin/pip" install -q -e "$RIBIKS_DIR"
-
-echo "[*] Creating ribiks command..."
-mkdir -p "$BIN_DIR"
+echo "[*] Setting up ribiks launcher..."
 cat > "$BIN_DIR/ribiks" << LAUNCHER
 #!/bin/bash
+export PYTHONPATH="$RIBIKS_DIR:\$PYTHONPATH"
 exec "$VENV_DIR/bin/python" -m ribiks.cli "\$@"
 LAUNCHER
 chmod +x "$BIN_DIR/ribiks"
 
-if ! echo "$PATH" | grep -q "$BIN_DIR"; then
-    echo "[*] Adding $BIN_DIR to PATH..."
-    SHELL_RC="$HOME/.bashrc"
-    if [ -f "$HOME/.zshrc" ]; then
-        SHELL_RC="$HOME/.zshrc"
-    fi
-    echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> "$SHELL_RC"
-    export PATH="$BIN_DIR:$PATH"
-fi
-
 echo ""
-echo "[+] Installation complete!"
-echo "[i] Run 'ribiks' to start"
-echo "[i] Run 'ribiks setup' for first-time configuration"
+echo "  ╔══════════════════════════════════════╗"
+echo "  ║    Installation Complete!            ║"
+echo "  ╚══════════════════════════════════════╝"
+echo ""
+echo "  Run 'ribiks' to start"
+echo "  Run 'ribiks setup' for first-time configuration"
+echo ""
