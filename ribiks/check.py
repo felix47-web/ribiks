@@ -14,35 +14,35 @@ from .evolution import (
 )
 
 ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
-ZEN_MODEL = "big-pickle"
-ZEN_FALLBACKS = [
+FREE_MODELS = [
     "nemotron-3-ultra-free",
+    "laguna-s-2.1-free",
+    "x-preview-f-free",
+    "hy3-free",
+    "big-pickle",
     "mimo-v2.5-free",
-    "deepseek-v4-flash-free",
+    "nemotron-3.5-lightning-free",
 ]
 
 
-async def zen_chat(messages, api_key, timeout=30):
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
+async def zen_chat(messages, timeout=30):
+    payload = {
+        "messages": messages,
+        "max_tokens": 256,
+        "temperature": 0.8,
     }
-    models = [ZEN_MODEL] + ZEN_FALLBACKS
-    for model in models:
-        payload = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": 256,
-            "temperature": 0.8,
-        }
+    for model in FREE_MODELS:
+        payload["model"] = model
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    ZEN_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)
+                    ZEN_URL, json=payload, timeout=aiohttp.ClientTimeout(total=timeout)
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        return data["choices"][0]["message"]["content"].strip()
+                        content = data["choices"][0]["message"]["content"].strip()
+                        if content:
+                            return content
         except Exception:
             continue
     return None
@@ -63,7 +63,7 @@ def parse_json_response(text):
         return None
 
 
-async def analyze_message_intent(message_text, sender_name, sender_gender, api_key):
+async def analyze_message_intent(message_text, sender_name, sender_gender):
     prompt = f'''Analyze this Telegram message and respond with ONLY a valid JSON object (no markdown, no explanation, no code blocks):
 
 Message: "{message_text}"
@@ -89,11 +89,11 @@ Reply with ONLY the JSON object:'''
         {"role": "system", "content": "You are a message intent analyzer. Reply with only valid JSON."},
         {"role": "user", "content": prompt},
     ]
-    response = await zen_chat(messages, api_key, timeout=30)
+    response = await zen_chat(messages, timeout=30)
     return parse_json_response(response)
 
 
-async def generate_ai_reply(msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis, api_key):
+async def generate_ai_reply(msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis):
     intent = intent_analysis.get("intent", "other") if intent_analysis else "other"
     sentiment = intent_analysis.get("sentiment", "neutral") if intent_analysis else "neutral"
     summary = intent_analysis.get("summary", "") if intent_analysis else ""
@@ -142,7 +142,7 @@ Reply with ONLY the reply text, nothing else:'''
         {"role": "system", "content": persona},
         {"role": "user", "content": prompt},
     ]
-    response = await zen_chat(messages, api_key, timeout=30)
+    response = await zen_chat(messages, timeout=30)
     if response:
         cleaned = response.strip().strip('"').strip("'")
         if cleaned and len(cleaned) > 2:
@@ -151,10 +151,10 @@ Reply with ONLY the reply text, nothing else:'''
     return None
 
 
-async def generate_reply(msg_text, sender_name, sender_gender, user_gender, relationship, api_key):
-    intent_analysis = await analyze_message_intent(msg_text, sender_name, sender_gender, api_key)
+async def generate_reply(msg_text, sender_name, sender_gender, user_gender, relationship):
+    intent_analysis = await analyze_message_intent(msg_text, sender_name, sender_gender)
     reply = await generate_ai_reply(
-        msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis, api_key
+        msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis
     )
     return reply
 
@@ -177,14 +177,8 @@ async def run_check():
 
     cfg = load_config()
     user_gender = cfg.get("user_gender") or "male"
-    api_key = cfg.get("ai_api_key")
 
-    if not api_key:
-        print("[!] No AI API key configured. Run 'ribiks setup' first.")
-        return
-
-    print(f"[*] AI Backend: OpenCode Zen ({ZEN_MODEL})")
-    print(f"[*] API Key: ...{api_key[-6:]}")
+    print(f"[*] AI Backend: Free models (no key required)")
 
     targets = [a["target"] for a in enabled]
     print(f"[*] Auto-reply enabled for: {', '.join(targets)}")
@@ -248,7 +242,7 @@ async def run_check():
 
                 relationship = accounts[acc_idx].get("relationship", "romantic")
 
-                reply = await generate_reply(msg.text, sender_name, sender_gender, user_gender, relationship, api_key)
+                reply = await generate_reply(msg.text, sender_name, sender_gender, user_gender, relationship)
 
                 if not reply:
                     skipped += 1
