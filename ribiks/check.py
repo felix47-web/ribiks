@@ -217,6 +217,7 @@ async def run_check():
             acc = accounts[acc_idx]
             current_relationship = acc.get("relationship", "romantic")
             current_score = acc.get("romance_score", 0)
+            replied_ids = set(acc.get("replied_messages", []))
 
             new_score = update_romance_score(current_score, unread)
             accounts[acc_idx]["romance_score"] = new_score
@@ -232,6 +233,8 @@ async def run_check():
                 evolutions.append((target, current_relationship, new_relationship))
 
             for msg in unread:
+                if msg.id in replied_ids:
+                    continue
                 sender = await msg.get_sender()
                 sender_name = getattr(sender, "first_name", "") or ""
                 if not sender_name:
@@ -251,6 +254,7 @@ async def run_check():
 
                 await msg.reply(reply)
                 replied.add(msg.id)
+                replied_ids.add(msg.id)
                 total_replied += 1
 
                 rel_icon = {"romantic": "💕", "friendly": "🤝", "polite": "👔"}.get(relationship, "❓")
@@ -258,6 +262,8 @@ async def run_check():
                 print(f"      msg: '{msg.text[:60]}...'")
                 print(f"      reply: '{reply[:60]}...'")
                 await asyncio.sleep(2)
+
+            accounts[acc_idx]["replied_messages"] = list(replied_ids)[-100:]
 
         except Exception as e:
             print(f"  [!] {target}: Error - {e}")
