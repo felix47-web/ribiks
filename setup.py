@@ -6,7 +6,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "telethon",
-        "openai",
+        "aiohttp",
     ],
     entry_points={
         "console_scripts": [

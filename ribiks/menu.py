@@ -63,6 +63,11 @@ def run_setup_cmd():
     run_setup()
 
 
+def run_config_cmd():
+    from .setup import run_config
+    run_config()
+
+
 def run_update_cmd():
     from .updates import do_update
     do_update()
@@ -73,8 +78,9 @@ MENU_OPTIONS = {
     "2": ("Scan Groups", run_groups_cmd),
     "3": ("Manage Accounts", run_accounts_cmd),
     "4": ("Setup / Reconfigure", run_setup_cmd),
-    "5": ("Status", show_status),
-    "6": ("Check for Updates", run_update_cmd),
+    "5": ("Configuration", run_config_cmd),
+    "6": ("Status", show_status),
+    "7": ("Check for Updates", run_update_cmd),
 }
 
 

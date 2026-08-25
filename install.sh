@@ -26,7 +26,7 @@ python3 -m venv "$VENV_DIR" || {
 
 echo "[*] Installing dependencies..."
 "$VENV_DIR/bin/pip" install --upgrade pip 2>/dev/null || true
-"$VENV_DIR/bin/pip" install telethon requests
+"$VENV_DIR/bin/pip" install telethon requests aiohttp
 
 echo "[*] Setting up ribiks launcher..."
 cat > "$BIN_DIR/ribiks" << LAUNCHER

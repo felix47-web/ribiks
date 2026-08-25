@@ -5,7 +5,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ribiks.menu import menu_main, run_check_cmd, run_groups_cmd, run_setup_cmd
+from ribiks.menu import menu_main, run_check_cmd, run_groups_cmd, run_setup_cmd, run_config_cmd
 from ribiks.accounts import accounts_main
 
 
@@ -15,6 +15,7 @@ USAGE = """
   Usage:
     ribiks                  Launch interactive menu
     ribiks check            Refresh & auto-reply to target accounts
+    ribiks config           View/edit configuration
     ribiks groups -check    Scan groups for member info
     ribiks setup            First-time setup / reconfigure
     ribiks accounts list    List auto-reply targets
@@ -36,6 +37,8 @@ def main():
 
     if cmd == "check":
         run_check_cmd()
+    elif cmd == "config":
+        run_config_cmd()
     elif cmd == "groups":
         if "-check" in args or "--check" in args:
             run_groups_cmd()

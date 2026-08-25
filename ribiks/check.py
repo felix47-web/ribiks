@@ -1,46 +1,50 @@
 import asyncio
 import json
-import os
-import subprocess
-import sys
 import re
-from datetime import datetime
 
-from telethon import events
+import aiohttp
 
-from .core import get_client, ensure_connected
+from .core import ensure_connected
 from .config import load_accounts, load_config, save_accounts
 from .gender import detect_gender, get_gender_emoji
 from .evolution import (
-    analyze_message_tone,
     update_romance_score,
     check_relationship_evolution,
     get_relationship_prompt,
-    get_fallback_messages,
 )
 
-
-def check_opencode():
-    try:
-        result = subprocess.run(
-            ["which", "opencode"],
-            capture_output=True, text=True, timeout=5
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
+ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
+ZEN_MODEL = "big-pickle"
+ZEN_FALLBACKS = [
+    "nemotron-3-ultra-free",
+    "mimo-v2.5-free",
+    "deepseek-v4-flash-free",
+]
 
 
-def opencode_run(prompt, timeout=30):
-    try:
-        result = subprocess.run(
-            ["opencode", "run", prompt],
-            capture_output=True, text=True, timeout=timeout
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-        pass
+async def zen_chat(messages, api_key, timeout=30):
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    models = [ZEN_MODEL] + ZEN_FALLBACKS
+    for model in models:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": 256,
+            "temperature": 0.8,
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    ZEN_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return data["choices"][0]["message"]["content"].strip()
+        except Exception:
+            continue
     return None
 
 
@@ -59,7 +63,7 @@ def parse_json_response(text):
         return None
 
 
-def analyze_message_intent(message_text, sender_name, sender_gender):
+async def analyze_message_intent(message_text, sender_name, sender_gender, api_key):
     prompt = f'''Analyze this Telegram message and respond with ONLY a valid JSON object (no markdown, no explanation, no code blocks):
 
 Message: "{message_text}"
@@ -81,11 +85,15 @@ Valid intent values:
 
 Reply with ONLY the JSON object:'''
 
-    response = opencode_run(prompt)
+    messages = [
+        {"role": "system", "content": "You are a message intent analyzer. Reply with only valid JSON."},
+        {"role": "user", "content": prompt},
+    ]
+    response = await zen_chat(messages, api_key, timeout=30)
     return parse_json_response(response)
 
 
-def generate_reply_opencode(msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis):
+async def generate_ai_reply(msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis, api_key):
     intent = intent_analysis.get("intent", "other") if intent_analysis else "other"
     sentiment = intent_analysis.get("sentiment", "neutral") if intent_analysis else "neutral"
     summary = intent_analysis.get("summary", "") if intent_analysis else ""
@@ -130,7 +138,11 @@ Generate a natural, contextual reply that:
 
 Reply with ONLY the reply text, nothing else:'''
 
-    response = opencode_run(prompt)
+    messages = [
+        {"role": "system", "content": persona},
+        {"role": "user", "content": prompt},
+    ]
+    response = await zen_chat(messages, api_key, timeout=30)
     if response:
         cleaned = response.strip().strip('"').strip("'")
         if cleaned and len(cleaned) > 2:
@@ -139,50 +151,12 @@ Reply with ONLY the reply text, nothing else:'''
     return None
 
 
-def generate_reply(msg_text, sender_name, sender_gender, user_gender, relationship):
-    has_opencode = check_opencode()
-
-    if has_opencode:
-        intent_analysis = analyze_message_intent(msg_text, sender_name, sender_gender)
-        reply = generate_reply_opencode(
-            msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis
-        )
-        if reply:
-            return reply
-
-    tone, _ = analyze_message_tone(msg_text)
-
-    cfg = load_config()
-    api_key = cfg.get("ai_api_key")
-    model = cfg.get("ai_model", "gpt-4o-mini")
-    max_len = cfg.get("max_reply_length", 200)
-
-    system_prompt = get_relationship_prompt(relationship, user_gender, sender_gender)
-
-    if api_key:
-        try:
-            import requests
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": f"{system_prompt} Max {max_len} chars. Use emojis sparingly. Never break character. Never mention being AI."},
-                    {"role": "user", "content": f"{sender_name} ({sender_gender}) said: {msg_text}\n\nIntent: {tone}\nReply:"}
-                ],
-                "max_tokens": 100,
-                "temperature": 0.9
-            }
-            resp = requests.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers, timeout=15)
-            if resp.status_code == 200:
-                data = resp.json()
-                return data["choices"][0]["message"]["content"].strip()
-        except Exception:
-            pass
-
-    return get_fallback_messages(relationship, sender_gender)
+async def generate_reply(msg_text, sender_name, sender_gender, user_gender, relationship, api_key):
+    intent_analysis = await analyze_message_intent(msg_text, sender_name, sender_gender, api_key)
+    reply = await generate_ai_reply(
+        msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis, api_key
+    )
+    return reply
 
 
 def find_account_index(accounts, target):
@@ -203,10 +177,14 @@ async def run_check():
 
     cfg = load_config()
     user_gender = cfg.get("user_gender") or "male"
+    api_key = cfg.get("ai_api_key")
 
-    has_opencode = check_opencode()
-    ai_status = "OpenCode" if has_opencode else "Fallback (no OpenCode found)"
-    print(f"[*] AI Backend: {ai_status}")
+    if not api_key:
+        print("[!] No AI API key configured. Run 'ribiks setup' first.")
+        return
+
+    print(f"[*] AI Backend: OpenCode Zen ({ZEN_MODEL})")
+    print(f"[*] API Key: ...{api_key[-6:]}")
 
     targets = [a["target"] for a in enabled]
     print(f"[*] Auto-reply enabled for: {', '.join(targets)}")
@@ -222,6 +200,7 @@ async def run_check():
     replied = set()
     total_replied = 0
     evolutions = []
+    skipped = 0
 
     for target in targets:
         try:
@@ -264,14 +243,17 @@ async def run_check():
                 if not sender_name:
                     sender_name = "friend"
 
-                api_key = cfg.get("ai_api_key")
-                model = cfg.get("ai_model", "gpt-4o-mini")
-                sender_gender = detect_gender(sender_name, api_key, model)
+                sender_gender = detect_gender(sender_name)
                 gender_icon = get_gender_emoji(sender_gender)
 
                 relationship = accounts[acc_idx].get("relationship", "romantic")
 
-                reply = generate_reply(msg.text, sender_name, sender_gender, user_gender, relationship)
+                reply = await generate_reply(msg.text, sender_name, sender_gender, user_gender, relationship, api_key)
+
+                if not reply:
+                    skipped += 1
+                    print(f"  [-] {target}: {gender_icon}{sender_name} - API unavailable, skipping")
+                    continue
 
                 await msg.reply(reply)
                 replied.add(msg.id)
@@ -289,6 +271,8 @@ async def run_check():
     save_accounts(accounts)
 
     print(f"\n[+] Done. Replied to {total_replied} messages across {len(targets)} accounts.")
+    if skipped:
+        print(f"  Skipped {skipped} message(s) - API unavailable.")
     if evolutions:
         print("\n  Relationship evolutions:")
         for target, old_rel, new_rel in evolutions:
