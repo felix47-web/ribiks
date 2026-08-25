@@ -2,6 +2,7 @@
 
 set -e
 
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 RIBIKS_DIR="$HOME/ribiks"
 INSTALL_DIR="$HOME/.ribiks"
 BIN_DIR="$PREFIX/bin"
@@ -16,7 +17,7 @@ echo ""
 if [ -d "$RIBIKS_DIR/.git" ]; then
     echo "[i] Detected: git installation"
     echo "[*] Pulling latest changes..."
-    cd "$RIBIKS_DIR"
+    cd "$RIBIKS_DIR" || { echo "[!] Cannot access $RIBIKS_DIR"; exit 1; }
     git pull origin main
     echo ""
     echo "[+] Updated via git pull!"
@@ -25,14 +26,19 @@ if [ -d "$RIBIKS_DIR/.git" ]; then
 elif [ -f "$INSTALL_DIR/ribiks.pyz" ]; then
     echo "[i] Detected: .pyz installation"
     echo "[*] Downloading latest release..."
+    mkdir -p "$INSTALL_DIR"
     curl -sL "https://github.com/felix47-web/ribiks/releases/latest/download/ribiks.pyz" -o "$INSTALL_DIR/ribiks.pyz"
     chmod +x "$INSTALL_DIR/ribiks.pyz"
     echo "[+] Updated .pyz to latest version!"
 
 else
-    echo "[!] No existing installation found."
+    echo "[!] No existing installation found at:"
+    echo "    Git: $RIBIKS_DIR"
+    echo "    PYZ: $INSTALL_DIR/ribiks.pyz"
+    echo ""
     echo "[i] Install fresh with:"
-    echo "    curl -fsSL https://raw.githubusercontent.com/felix47-web/ribiks/main/update.sh | bash"
+    echo "    git clone https://github.com/felix47-web/ribiks.git ~/ribiks"
+    echo "    cd ~/ribiks && chmod +x install.sh && ./install.sh"
     exit 1
 fi
 
