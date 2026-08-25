@@ -2,8 +2,7 @@
 
 set -e
 
-RIBIKS_DIR="$(cd "$(dirname "$0")" && pwd)"
-VENV_DIR="$RIBIKS_DIR/venv"
+INSTALL_DIR="$HOME/.ribiks"
 BIN_DIR="$PREFIX/bin"
 
 echo ""
@@ -12,27 +11,31 @@ echo "  ║       Installing Ribiks...           ║"
 echo "  ╚══════════════════════════════════════╝"
 echo ""
 
-echo "[*] Checking Python..."
+# Check Python
 if ! command -v python3 &>/dev/null; then
-    echo "[!] Python3 not found. Install with: pkg install python"
+    echo "[!] Python3 not found."
+    echo "[i] Install with: pkg install python"
     exit 1
 fi
 
-echo "[*] Creating virtual environment..."
-python3 -m venv "$VENV_DIR" || {
-    echo "[!] venv failed, trying without pip..."
-    python3 -m venv "$VENV_DIR" --without-pip
-}
+# Create install directory
+mkdir -p "$INSTALL_DIR"
 
-echo "[*] Installing dependencies..."
-"$VENV_DIR/bin/pip" install --upgrade pip 2>/dev/null || true
-"$VENV_DIR/bin/pip" install telethon requests
+# Download the pyz
+echo "[*] Downloading Ribiks..."
+curl -sL "https://github.com/felix47-web/ribiks/releases/latest/download/ribiks.pyz" -o "$INSTALL_DIR/ribiks.pyz"
 
-echo "[*] Setting up ribiks launcher..."
+if [ ! -f "$INSTALL_DIR/ribiks.pyz" ]; then
+    echo "[!] Download failed. Check your internet connection."
+    exit 1
+fi
+
+chmod +x "$INSTALL_DIR/ribiks.pyz"
+
+# Create launcher
 cat > "$BIN_DIR/ribiks" << LAUNCHER
 #!/bin/bash
-export PYTHONPATH="$RIBIKS_DIR:\$PYTHONPATH"
-exec "$VENV_DIR/bin/python" -m ribiks.cli "\$@"
+exec python3 "$INSTALL_DIR/ribiks.pyz" "\$@"
 LAUNCHER
 chmod +x "$BIN_DIR/ribiks"
 
@@ -41,6 +44,6 @@ echo "  ╔═══════════════════════
 echo "  ║    Installation Complete!            ║"
 echo "  ╚══════════════════════════════════════╝"
 echo ""
-echo "  Run 'ribiks' to start"
-echo "  Run 'ribiks setup' for first-time configuration"
+echo "  Run: ribiks"
+echo "  First time: ribiks setup"
 echo ""
