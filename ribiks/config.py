@@ -8,6 +8,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 SESSION_DIR = os.path.join(BASE_DIR, "sessions")
 ACCOUNTS_PATH = os.path.join(BASE_DIR, "accounts.json")
+CHATS_DIR = os.path.join(BASE_DIR, "chats")
 
 DEFAULT_CONFIG = {
     "api_id": None,
@@ -75,3 +76,28 @@ def get_session_path():
     cfg = load_config()
     os.makedirs(SESSION_DIR, exist_ok=True)
     return os.path.join(SESSION_DIR, cfg.get("session_name", "ribiks_session"))
+
+
+def get_chat_path(target):
+    safe = target.replace("@", "").replace("/", "_")
+    return os.path.join(CHATS_DIR, f"{safe}.json")
+
+
+def load_chat_history(target):
+    path = get_chat_path(target)
+    if not os.path.exists(path):
+        return {"target": target, "messages": [], "last_checked": None}
+    with open(path) as f:
+        return json.load(f)
+
+
+def save_chat_history(target, messages, last_checked=None):
+    os.makedirs(CHATS_DIR, exist_ok=True)
+    path = get_chat_path(target)
+    data = {
+        "target": target,
+        "messages": messages[-20:],
+        "last_checked": last_checked,
+    }
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)

@@ -1,11 +1,18 @@
 import asyncio
 import json
 import re
+from datetime import datetime, timezone
 
 import aiohttp
 
 from .core import ensure_connected
-from .config import load_accounts, load_config, save_accounts
+from .config import (
+    load_accounts,
+    load_config,
+    save_accounts,
+    load_chat_history,
+    save_chat_history,
+)
 from .gender import detect_gender, get_gender_emoji
 from .evolution import (
     update_romance_score,
@@ -23,6 +30,8 @@ FREE_MODELS = [
     "mimo-v2.5-free",
     "nemotron-3.5-lightning-free",
 ]
+
+CHAT_HISTORY_LIMIT = 20
 
 
 async def zen_chat(messages, timeout=30):
@@ -63,9 +72,63 @@ def parse_json_response(text):
         return None
 
 
-async def analyze_message_intent(message_text, sender_name, sender_gender):
-    prompt = f'''Analyze this Telegram message and respond with ONLY a valid JSON object (no markdown, no explanation, no code blocks):
+def format_chat_for_ai(messages, my_name="You"):
+    if not messages:
+        return "No previous conversation history."
+    lines = []
+    for m in reversed(messages):
+        ts = m.get("date", "")
+        if ts:
+            try:
+                dt = datetime.fromisoformat(ts)
+                ts = dt.strftime("%H:%M")
+            except (ValueError, TypeError):
+                ts = ""
+        speaker = my_name if m.get("from_me") else m.get("sender", "Them")
+        text = m.get("text", "")
+        if ts:
+            lines.append(f"[{ts}] {speaker}: {text}")
+        else:
+            lines.append(f"{speaker}: {text}")
+    return "\n".join(lines)
 
+
+async def save_chat_from_telegram(client, entity, target):
+    messages = []
+    my_id = (await client.get_me()).id
+
+    async for msg in client.iter_messages(entity, limit=CHAT_HISTORY_LIMIT):
+        if not msg.text:
+            continue
+
+        sender = await msg.get_sender()
+        sender_name = ""
+        if sender:
+            sender_name = getattr(sender, "first_name", "") or ""
+        if not sender_name:
+            sender_name = "friend"
+
+        from_me = msg.sender_id == my_id or msg.out
+
+        messages.append({
+            "id": msg.id,
+            "from_me": from_me,
+            "sender": sender_name,
+            "text": msg.text,
+            "date": msg.date.isoformat() if msg.date else None,
+        })
+
+    save_chat_history(target, messages, last_checked=datetime.now(timezone.utc).isoformat())
+    return messages
+
+
+async def analyze_message_intent(message_text, sender_name, sender_gender, chat_context=""):
+    context_block = ""
+    if chat_context and chat_context != "No previous conversation history.":
+        context_block = f"\nConversation history:\n{chat_context}\n"
+
+    prompt = f'''Analyze this Telegram message and respond with ONLY a valid JSON object (no markdown, no explanation, no code blocks):
+{context_block}
 Message: "{message_text}"
 Sender: {sender_name} ({sender_gender})
 
@@ -93,7 +156,7 @@ Reply with ONLY the JSON object:'''
     return parse_json_response(response)
 
 
-async def generate_ai_reply(msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis):
+async def generate_ai_reply(msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis, chat_context=""):
     intent = intent_analysis.get("intent", "other") if intent_analysis else "other"
     sentiment = intent_analysis.get("sentiment", "neutral") if intent_analysis else "neutral"
     summary = intent_analysis.get("summary", "") if intent_analysis else ""
@@ -114,10 +177,21 @@ async def generate_ai_reply(msg_text, sender_name, sender_gender, user_gender, r
 
     instruction = intent_instructions.get(intent, intent_instructions["other"])
 
+    history_block = ""
+    if chat_context and chat_context != "No previous conversation history.":
+        history_block = f"""
+Chat history with {sender_name}:
+---
+{chat_context}
+---
+
+Use this history to understand the conversation flow. Reference earlier messages when relevant. Do NOT repeat something already said in the history.
+"""
+
     prompt = f'''You are replying to a Telegram message. Your persona and context:
 
 {persona}
-
+{history_block}
 Message intent: {intent}
 Message sentiment: {sentiment}
 Message summary: {summary}
@@ -130,6 +204,7 @@ Generate a natural, contextual reply that:
 - Directly addresses what the message is about
 - Matches the intent and sentiment
 - Fits the {relationship} relationship style
+- References the conversation history when relevant (but don't repeat what was already said)
 - Is 1-2 sentences max
 - Uses emojis sparingly and naturally
 - Never mentions being AI or a bot
@@ -151,10 +226,10 @@ Reply with ONLY the reply text, nothing else:'''
     return None
 
 
-async def generate_reply(msg_text, sender_name, sender_gender, user_gender, relationship):
-    intent_analysis = await analyze_message_intent(msg_text, sender_name, sender_gender)
+async def generate_reply(msg_text, sender_name, sender_gender, user_gender, relationship, chat_context=""):
+    intent_analysis = await analyze_message_intent(msg_text, sender_name, sender_gender, chat_context)
     reply = await generate_ai_reply(
-        msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis
+        msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis, chat_context
     )
     return reply
 
@@ -189,6 +264,7 @@ async def run_check():
         return
 
     me = await client.get_me()
+    my_name = me.first_name or "You"
     print(f"[+] Logged in as: {me.first_name} (@{me.username})")
 
     total_replied = 0
@@ -207,39 +283,35 @@ async def run_check():
             current_relationship = acc.get("relationship", "romantic")
             current_score = acc.get("romance_score", 0)
 
-            last_msg = None
-            async for msg in client.iter_messages(entity, limit=1):
-                last_msg = msg
+            chat_messages = await save_chat_from_telegram(client, entity, target)
 
-            if not last_msg:
+            if not chat_messages:
                 print(f"  [~] {target}: No messages in chat")
                 continue
 
-            if last_msg.out:
+            last_msg_data = chat_messages[0]
+
+            if last_msg_data["from_me"]:
                 print(f"  [~] {target}: Last message is ours, skipping")
                 continue
 
-            if not last_msg.text:
-                print(f"  [~] {target}: Last message has no text, skipping")
-                continue
-
-            sender = await last_msg.get_sender()
-            sender_name = getattr(sender, "first_name", "") or ""
-            if not sender_name:
-                sender_name = "friend"
+            last_text = last_msg_data["text"]
+            sender_name = last_msg_data["sender"]
 
             sender_gender = detect_gender(sender_name)
             gender_icon = get_gender_emoji(sender_gender)
 
-            recent_msgs = []
-            async for msg in client.iter_messages(entity, limit=10):
-                recent_msgs.append(msg)
-
-            new_score = update_romance_score(current_score, [m for m in recent_msgs if not m.out])
-            accounts[acc_idx]["romance_score"] = new_score
+            incoming_msgs = [m for m in chat_messages if not m.get("from_me")]
+            if incoming_msgs:
+                recent_incoming = []
+                async for msg in client.iter_messages(entity, limit=10):
+                    if not msg.out:
+                        recent_incoming.append(msg)
+                new_score = update_romance_score(current_score, recent_incoming)
+                accounts[acc_idx]["romance_score"] = new_score
 
             new_relationship, evolved = check_relationship_evolution(
-                target, current_relationship, new_score
+                target, current_relationship, accounts[acc_idx]["romance_score"]
             )
 
             if evolved:
@@ -250,19 +322,26 @@ async def run_check():
 
             relationship = accounts[acc_idx].get("relationship", "romantic")
 
-            reply = await generate_reply(last_msg.text, sender_name, sender_gender, user_gender, relationship)
+            chat_context = format_chat_for_ai(chat_messages, my_name)
+
+            reply = await generate_reply(last_text, sender_name, sender_gender, user_gender, relationship, chat_context)
 
             if not reply:
                 skipped += 1
                 print(f"  [-] {target}: {gender_icon}{sender_name} - API unavailable, skipping")
                 continue
 
-            await last_msg.reply(reply)
+            last_msg_id = last_msg_data["id"]
+            await client.send_message(entity, reply, reply_to=last_msg_id)
             total_replied += 1
+
+            accounts[acc_idx]["replied_messages"] = accounts[acc_idx].get("replied_messages", [])
+            accounts[acc_idx]["replied_messages"].append(last_msg_id)
+            accounts[acc_idx]["replied_messages"] = accounts[acc_idx]["replied_messages"][-100:]
 
             rel_icon = {"romantic": "💕", "friendly": "🤝", "polite": "👔"}.get(relationship, "❓")
             print(f"  [>] {target}: {gender_icon}{sender_name} [{relationship}{rel_icon}]")
-            print(f"      msg: '{last_msg.text[:60]}...'")
+            print(f"      msg: '{last_text[:60]}...'")
             print(f"      reply: '{reply[:60]}...'")
             await asyncio.sleep(2)
 
