@@ -9,16 +9,25 @@ from telethon import events
 
 from .core import get_client, ensure_connected
 from .config import load_accounts, load_config, save_accounts
+from .gender import detect_gender, get_gender_emoji
+from .evolution import (
+    analyze_message_tone,
+    update_romance_score,
+    check_relationship_evolution,
+    get_relationship_prompt,
+    get_fallback_messages,
+)
 
 
-def generate_reply(msg_text, sender_name, style="sweet and caring"):
-    import random
+def generate_reply(msg_text, sender_name, sender_gender, user_gender, relationship):
     import requests
 
     cfg = load_config()
     api_key = cfg.get("ai_api_key")
     model = cfg.get("ai_model", "gpt-4o-mini")
     max_len = cfg.get("max_reply_length", 200)
+
+    system_prompt = get_relationship_prompt(relationship, user_gender, sender_gender)
 
     if api_key:
         try:
@@ -29,8 +38,8 @@ def generate_reply(msg_text, sender_name, style="sweet and caring"):
             payload = {
                 "model": model,
                 "messages": [
-                    {"role": "system", "content": f"You are a {style} girlfriend/boyfriend replying to your partner. Keep replies short, natural, and warm. Max {max_len} chars. Use emojis sparingly. Never break character. Never mention being AI."},
-                    {"role": "user", "content": f"{sender_name} said: {msg_text}\n\nReply:"}
+                    {"role": "system", "content": f"{system_prompt} Max {max_len} chars. Use emojis sparingly. Never break character. Never mention being AI."},
+                    {"role": "user", "content": f"{sender_name} ({sender_gender}) said: {msg_text}\n\nReply:"}
                 ],
                 "max_tokens": 100,
                 "temperature": 0.9
@@ -42,19 +51,14 @@ def generate_reply(msg_text, sender_name, style="sweet and caring"):
         except Exception:
             pass
 
-    fallbacks = [
-        "Aww that's so sweet babe \U0001f496",
-        "I love you so much \U0001f48b",
-        "You always make my day better \U0001f60d",
-        "Can't stop thinking about you \U0001f970",
-        "You're the best thing that happened to me \U0001f495",
-        "Missing you right now \U0001f61b",
-        "You're literally the cutest \U0001f97a\U0001f496",
-        "My heart belongs to you \u2764\ufe0f",
-        "You just made me smile so hard \U0001f970",
-        "I'm so lucky to have you \U0001f496",
-    ]
-    return random.choice(fallbacks)
+    return get_fallback_messages(relationship, sender_gender)
+
+
+def find_account_index(accounts, target):
+    for i, a in enumerate(accounts):
+        if a["target"] == target:
+            return i
+    return -1
 
 
 async def run_check():
@@ -66,8 +70,14 @@ async def run_check():
         print("[i] Use 'ribiks accounts add <username>' to add targets.")
         return
 
+    cfg = load_config()
+    user_gender = cfg.get("user_gender") or "male"
+    api_key = cfg.get("ai_api_key")
+    model = cfg.get("ai_model", "gpt-4o-mini")
+
     targets = [a["target"] for a in enabled]
     print(f"[*] Auto-reply enabled for: {', '.join(targets)}")
+    print(f"[*] Your gender: {user_gender.capitalize()}")
 
     client = await ensure_connected()
     if not client:
@@ -78,6 +88,7 @@ async def run_check():
 
     replied = set()
     total_replied = 0
+    evolutions = []
 
     for target in targets:
         try:
@@ -93,20 +104,63 @@ async def run_check():
                 print(f"  [~] {target}: No new messages")
                 continue
 
+            acc_idx = find_account_index(accounts, target)
+            if acc_idx == -1:
+                continue
+
+            acc = accounts[acc_idx]
+            current_relationship = acc.get("relationship", "romantic")
+            current_score = acc.get("romance_score", 0)
+
+            new_score = update_romance_score(current_score, unread)
+            accounts[acc_idx]["romance_score"] = new_score
+
+            new_relationship, evolved = check_relationship_evolution(
+                target, current_relationship, new_score
+            )
+
+            if evolved:
+                accounts[acc_idx]["relationship"] = new_relationship
+                emoji = "💕" if new_relationship == "romantic" else "🤝"
+                print(f"  {emoji} {target}: Relationship evolved: {current_relationship} -> {new_relationship}")
+                evolutions.append((target, current_relationship, new_relationship))
+
             for msg in unread:
                 sender = await msg.get_sender()
-                sender_name = getattr(sender, "first_name", "babe") or "babe"
-                reply = generate_reply(msg.text, sender_name)
+                sender_name = getattr(sender, "first_name", "") or ""
+                if not sender_name:
+                    sender_name = "friend"
+
+                sender_gender = detect_gender(sender_name, api_key, model)
+                gender_icon = get_gender_emoji(sender_gender)
+
+                relationship = accounts[acc_idx].get("relationship", "romantic")
+
+                tone, _ = analyze_message_tone(msg.text)
+
+                reply = generate_reply(msg.text, sender_name, sender_gender, user_gender, relationship)
+
                 await msg.reply(reply)
                 replied.add(msg.id)
                 total_replied += 1
-                print(f"  [>] {target}: replied to '{msg.text[:50]}...' -> '{reply[:50]}...'")
+
+                rel_icon = {"romantic": "💕", "friendly": "🤝", "polite": "👔"}.get(relationship, "❓")
+                print(f"  [>] {target}: {gender_icon}{sender_name} [{relationship}{rel_icon}] tone:{tone}")
+                print(f"      msg: '{msg.text[:60]}...'")
+                print(f"      reply: '{reply[:60]}...'")
                 await asyncio.sleep(2)
 
         except Exception as e:
             print(f"  [!] {target}: Error - {e}")
 
+    save_accounts(accounts)
+
     print(f"\n[+] Done. Replied to {total_replied} messages across {len(targets)} accounts.")
+    if evolutions:
+        print("\n  Relationship evolutions:")
+        for target, old_rel, new_rel in evolutions:
+            print(f"    {target}: {old_rel} -> {new_rel}")
+
     await client.disconnect()
 
 

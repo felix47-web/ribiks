@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 
 from .config import load_config, save_config, SESSION_DIR
 from .core import setup_auth
@@ -16,6 +17,7 @@ def run_setup():
         print(f"[i] Current config:")
         print(f"    API ID  : {cfg['api_id']}")
         print(f"    Phone   : {cfg['phone']}")
+        print(f"    Gender  : {cfg.get('user_gender') or 'Not set'}")
         change = input("[?] Reconfigure? (y/N): ").strip().lower()
         if change != "y":
             print("[i] Keeping existing config.")
@@ -38,6 +40,21 @@ def run_setup():
     cfg["api_id"] = api_id
     cfg["api_hash"] = api_hash
     cfg["phone"] = phone
+
+    print("\n  [?] Your gender (used to tailor replies):")
+    print("      [1] Male")
+    print("      [2] Female")
+    gender_choice = input("  > Select (1/2): ").strip()
+    if gender_choice == "1":
+        cfg["user_gender"] = "male"
+    elif gender_choice == "2":
+        cfg["user_gender"] = "female"
+    else:
+        print("[!] Invalid choice, defaulting to Male.")
+        cfg["user_gender"] = "male"
+
+    print(f"[i] Gender set to: {cfg['user_gender'].capitalize()}")
+
     save_config(cfg)
 
     print("\n[*] Authenticating with Telegram...")
@@ -46,6 +63,3 @@ def run_setup():
         print("[+] Setup complete! Run 'ribiks' to start.")
     else:
         print("[!] Setup failed. Try again with 'ribiks setup'.")
-
-
-import asyncio

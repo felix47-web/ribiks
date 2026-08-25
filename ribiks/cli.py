@@ -20,6 +20,8 @@ USAGE = """
     ribiks accounts list    List auto-reply targets
     ribiks accounts add     Add target account
     ribiks accounts remove  Remove target account
+    ribiks update           Check for and install updates
+    ribiks update --check   Check only (don't install)
 """
 
 
@@ -41,6 +43,12 @@ def main():
             print("[!] Usage: ribiks groups -check")
     elif cmd == "setup":
         run_setup_cmd()
+    elif cmd == "update":
+        from ribiks.updates import check_for_updates, do_update
+        if "--check" in args:
+            check_for_updates()
+        else:
+            do_update()
     elif cmd == "accounts":
         accounts_main(args[1:])
     elif cmd in ("-h", "--help", "help"):

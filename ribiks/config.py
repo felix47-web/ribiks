@@ -2,6 +2,8 @@ import json
 import os
 import sys
 
+GITHUB_REPO = "felix47-web/ribiks"
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 SESSION_DIR = os.path.join(BASE_DIR, "sessions")
@@ -18,6 +20,7 @@ DEFAULT_CONFIG = {
     "ai_api_key": None,
     "reply_style": "sweet and caring",
     "max_reply_length": 200,
+    "user_gender": None,
 }
 
 
