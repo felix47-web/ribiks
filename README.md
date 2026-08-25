@@ -14,11 +14,25 @@ Automated Telegram chat replying with AI-powered responses and group member scan
 
 ## Installation
 
+### One-line install (Termux / Linux)
+
 ```bash
-git clone https://github.com/felix47-web/ribiks.git
-cd ribiks
-chmod +x install.sh
-./install.sh
+curl -sL https://raw.githubusercontent.com/felix47-web/ribiks/main/install_ribiks.sh | bash
+```
+
+### Manual install
+
+Download `ribiks.pyz` from [Releases](https://github.com/felix47-web/ribiks/releases/latest), then:
+
+```bash
+mkdir -p ~/.ribiks
+mv ribiks.pyz ~/.ribiks/
+chmod +x ~/.ribiks/ribiks.pyz
+
+# Create command
+echo '#!/bin/bash
+exec python3 ~/.ribiks/ribiks.pyz "$@"' > /usr/local/bin/ribiks
+chmod +x /usr/local/bin/ribiks
 ```
 
 ## Quick Start
