@@ -191,7 +191,6 @@ async def run_check():
     me = await client.get_me()
     print(f"[+] Logged in as: {me.first_name} (@{me.username})")
 
-    replied = set()
     total_replied = 0
     evolutions = []
     skipped = 0
@@ -199,16 +198,6 @@ async def run_check():
     for target in targets:
         try:
             entity = await client.get_entity(target)
-            messages = []
-            async for msg in client.iter_messages(entity, limit=5):
-                if not msg.out and msg.text:
-                    messages.append(msg)
-
-            unread = [m for m in messages if m.id not in replied]
-
-            if not unread:
-                print(f"  [~] {target}: No new messages")
-                continue
 
             acc_idx = find_account_index(accounts, target)
             if acc_idx == -1:
@@ -217,9 +206,36 @@ async def run_check():
             acc = accounts[acc_idx]
             current_relationship = acc.get("relationship", "romantic")
             current_score = acc.get("romance_score", 0)
-            replied_ids = set(acc.get("replied_messages", []))
 
-            new_score = update_romance_score(current_score, unread)
+            last_msg = None
+            async for msg in client.iter_messages(entity, limit=1):
+                last_msg = msg
+
+            if not last_msg:
+                print(f"  [~] {target}: No messages in chat")
+                continue
+
+            if last_msg.out:
+                print(f"  [~] {target}: Last message is ours, skipping")
+                continue
+
+            if not last_msg.text:
+                print(f"  [~] {target}: Last message has no text, skipping")
+                continue
+
+            sender = await last_msg.get_sender()
+            sender_name = getattr(sender, "first_name", "") or ""
+            if not sender_name:
+                sender_name = "friend"
+
+            sender_gender = detect_gender(sender_name)
+            gender_icon = get_gender_emoji(sender_gender)
+
+            recent_msgs = []
+            async for msg in client.iter_messages(entity, limit=10):
+                recent_msgs.append(msg)
+
+            new_score = update_romance_score(current_score, [m for m in recent_msgs if not m.out])
             accounts[acc_idx]["romance_score"] = new_score
 
             new_relationship, evolved = check_relationship_evolution(
@@ -232,38 +248,23 @@ async def run_check():
                 print(f"  {emoji} {target}: Relationship evolved: {current_relationship} -> {new_relationship}")
                 evolutions.append((target, current_relationship, new_relationship))
 
-            for msg in unread:
-                if msg.id in replied_ids:
-                    continue
-                sender = await msg.get_sender()
-                sender_name = getattr(sender, "first_name", "") or ""
-                if not sender_name:
-                    sender_name = "friend"
+            relationship = accounts[acc_idx].get("relationship", "romantic")
 
-                sender_gender = detect_gender(sender_name)
-                gender_icon = get_gender_emoji(sender_gender)
+            reply = await generate_reply(last_msg.text, sender_name, sender_gender, user_gender, relationship)
 
-                relationship = accounts[acc_idx].get("relationship", "romantic")
+            if not reply:
+                skipped += 1
+                print(f"  [-] {target}: {gender_icon}{sender_name} - API unavailable, skipping")
+                continue
 
-                reply = await generate_reply(msg.text, sender_name, sender_gender, user_gender, relationship)
+            await last_msg.reply(reply)
+            total_replied += 1
 
-                if not reply:
-                    skipped += 1
-                    print(f"  [-] {target}: {gender_icon}{sender_name} - API unavailable, skipping")
-                    continue
-
-                await msg.reply(reply)
-                replied.add(msg.id)
-                replied_ids.add(msg.id)
-                total_replied += 1
-
-                rel_icon = {"romantic": "💕", "friendly": "🤝", "polite": "👔"}.get(relationship, "❓")
-                print(f"  [>] {target}: {gender_icon}{sender_name} [{relationship}{rel_icon}]")
-                print(f"      msg: '{msg.text[:60]}...'")
-                print(f"      reply: '{reply[:60]}...'")
-                await asyncio.sleep(2)
-
-            accounts[acc_idx]["replied_messages"] = list(replied_ids)[-100:]
+            rel_icon = {"romantic": "💕", "friendly": "🤝", "polite": "👔"}.get(relationship, "❓")
+            print(f"  [>] {target}: {gender_icon}{sender_name} [{relationship}{rel_icon}]")
+            print(f"      msg: '{last_msg.text[:60]}...'")
+            print(f"      reply: '{reply[:60]}...'")
+            await asyncio.sleep(2)
 
         except Exception as e:
             print(f"  [!] {target}: Error - {e}")

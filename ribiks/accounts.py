@@ -55,8 +55,7 @@ def accounts_main(args=None):
             "target": target,
             "enabled": True,
             "relationship": rel,
-            "romance_score": 0,
-            "replied_messages": []
+            "romance_score": 0
         }
         if not any(a["target"] == target for a in accounts):
             accounts.append(entry)
