@@ -23,7 +23,7 @@ COUNTRIES = {
 
 
 async def generate_search_queries(category, country_code, country_name):
-    from .check import FREE_MODELS, ZEN_URL
+    from .check import parse_json_response
 
     prompt = f"""Generate Telegram search queries for finding public group chats about {category} for people in {country_name}.
 
@@ -43,7 +43,7 @@ IMPORTANT: Output ONLY a JSON array. No explanation, no reasoning, no other text
         {"role": "user", "content": prompt},
     ]
 
-    response = await zen_chat(messages, base_timeout=45)
+    response = await zen_chat(messages, timeout=45)
 
     if not response:
         return get_fallback_queries(category, country_code)
@@ -282,7 +282,7 @@ Reply with ONLY a JSON object:
         {"role": "user", "content": prompt},
     ]
 
-    response = await zen_chat(messages, base_timeout=45)
+    response = await zen_chat(messages, timeout=45)
 
     if response:
         from .check import parse_json_response
@@ -413,7 +413,7 @@ Reply with ONLY a JSON object:
         {"role": "user", "content": prompt},
     ]
 
-    response = await zen_chat(messages, base_timeout=30)
+    response = await zen_chat(messages, timeout=30)
 
     if response:
         from .check import parse_json_response
