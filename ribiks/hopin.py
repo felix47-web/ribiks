@@ -25,21 +25,21 @@ COUNTRIES = {
 async def generate_search_queries(category, country_code, country_name):
     from .check import FREE_MODELS, ZEN_URL
 
-    prompt = f"""Generate search queries for finding public Telegram group chats about {category} for people in {country_name}.
+    prompt = f"""Generate Telegram search queries for finding public group chats about {category} for people in {country_name}.
 
 Requirements:
 - At least 100 words total across all queries
-- Mix of group names, slang, abbreviations, hashtags, topic phrases
-- For Germany: use BOTH German AND English terms
-- For US: English terms + some Spanish terms
+- Mix of group names, slang, abbreviations, topic phrases
+- For Germany: German AND English terms
+- For US: English + some Spanish
 
 {country_name} and topic: {category}
 
-Output ONLY a JSON array. No explanation, no reasoning, no other text:
+IMPORTANT: Output ONLY a JSON array. No explanation, no reasoning, no other text.
 ["query1", "query2", "query3"]"""
 
     messages = [
-        {"role": "system", "content": "Reply with ONLY a JSON array. No other text."},
+        {"role": "system", "content": "You output ONLY a JSON array. Nothing else. No explanation."},
         {"role": "user", "content": prompt},
     ]
 
@@ -65,19 +65,41 @@ def parse_query_array(text):
         try:
             result = json.loads(text[start:end + 1])
             if isinstance(result, list):
-                return [str(q).strip() for q in result if q and str(q).strip()]
+                cleaned = []
+                for q in result:
+                    q = str(q).strip().strip('"').strip("'")
+                    if q and len(q) > 2 and len(q) < 80:
+                        cleaned.append(q)
+                if cleaned:
+                    return cleaned
         except json.JSONDecodeError:
             pass
+
+    skip_prefixes = (
+        "i ", "the ", "you ", "for ", "reply", "generate", "include",
+        "requirements", "output", "here", "let me", "first", "since",
+        "wait", "at least", "queries should", "let's", "i need",
+        "i'll", "i should", "the user", "this is", "i'm", "okay",
+        "now", "my ", "so ", "to ", "a ", "an ", "if ", "but ",
+    )
+    skip_words = {"json", "array", "example", "note", "see above", "see below"}
 
     lines = text.split('\n')
     queries = []
     for line in lines:
         line = line.strip()
-        if not line or len(line) < 3:
-            continue
         line = line.strip('"').strip("'").strip(',').strip('-').strip('*').strip()
-        if line and not line.startswith(('I ', 'The ', 'You ', 'For ', 'Reply', 'Generate', 'Include', 'Requirements', 'Output', 'Here')):
-            queries.append(line)
+        line = line.strip('0123456789.): ')
+        if not line or len(line) < 4 or len(line) > 80:
+            continue
+        lower = line.lower()
+        if any(lower.startswith(p) for p in skip_prefixes):
+            continue
+        if lower in skip_words:
+            continue
+        if '{' in line or '}' in line or '//' in line:
+            continue
+        queries.append(line)
     return queries if queries else None
 
 
@@ -194,7 +216,7 @@ async def search_groups(client, queries, limit_per_query=20):
     shuffled = queries[:]
     random.shuffle(shuffled)
 
-    for query in shuffled[:8]:
+    for query in shuffled[:10]:
         try:
             result = await client(SearchRequest(
                 q=query,
@@ -337,6 +359,71 @@ async def show_group_info(client, group):
         print(f"      @{group['username']} - https://t.me/{group['username']}")
 
 
+async def verify_real_group(client, group, category):
+    from telethon.tl.functions.channels import GetFullChannelRequest
+
+    title = group.get('title', '')
+    members = group.get('participants_count') or 0
+    about = ''
+    group_username = group.get('username', '')
+
+    try:
+        entity = await client.get_entity(f"@{group_username}")
+        full = await client(GetFullChannelRequest(entity))
+        full_chat = full.full_chat
+        about = getattr(full_chat, 'about', '') or ''
+    except Exception:
+        about = group.get('about', '') or ''
+
+    title_lower = title.lower()
+    about_lower = about.lower()
+
+    hard_reject_keywords = [
+        "bot", "auto post", "rss feed", "webhook", "automated",
+        "notification bot", "alert bot", "play to earn", "mining bot", "captcha bot"
+    ]
+
+    for kw in hard_reject_keywords:
+        if kw in title_lower:
+            return False, f"Title contains '{kw}'"
+        if kw in about_lower:
+            return False, f"Description contains '{kw}'"
+
+    if "@" in about and "bot" in about_lower:
+        return False, "Description references bot accounts"
+
+    if members and members < 15:
+        return False, f"Too few members ({members})"
+
+    if not about or len(about.strip()) < 5:
+        return False, "No description"
+
+    prompt = f"""Is this a real human Telegram group or a bot/spam/auto-post group?
+
+Group: @{group_username}
+Title: {title}
+Members: {members}
+Description: {about[:300]}
+
+Reply with ONLY a JSON object:
+{{"is_real": true/false, "reason": "one sentence why"}}"""
+
+    messages = [
+        {"role": "system", "content": "You are a bot group detector. Reply with only valid JSON."},
+        {"role": "user", "content": prompt},
+    ]
+
+    response = await zen_chat(messages, base_timeout=30)
+
+    if response:
+        from .check import parse_json_response
+        result = parse_json_response(response)
+        if result and "is_real" in result:
+            return result["is_real"], result.get("reason", "AI decision")
+
+    return True, "Passed all checks"
+
+
 async def run_hopin():
     print("\n  ╔══════════════════════════════════════╗")
     print("  ║          HOP IN GROUP                ║")
@@ -387,6 +474,23 @@ async def run_hopin():
         print(f"[*] Best match: @{best_group['username']}")
         print(f"    Reason: {reason}")
 
+        remaining = [g for g in groups if g["username"] != best_group["username"]]
+
+        print("[*] Verifying group is not a bot group...")
+        is_real, verify_reason = await verify_real_group(client, best_group, category)
+        if not is_real:
+            print(f"    [!] Rejected: {verify_reason}")
+            print("[*] Looking for a real group...")
+            for alt in remaining[:5]:
+                is_real, verify_reason = await verify_real_group(client, alt, category)
+                if is_real:
+                    best_group = alt
+                    print(f"    [+] Verified: @{alt['username']}")
+                    break
+            else:
+                print("[!] No verified human groups found. Joining best match anyway...")
+                is_real = True
+
         print("[*] Joining group...")
         joined, status = await join_group(client, best_group)
 
@@ -396,7 +500,6 @@ async def run_hopin():
                 print("  [i] Waiting for admin approval to join.")
         else:
             print("[!] Failed to join. Trying next best group...")
-            remaining = [g for g in groups if g["username"] != best_group["username"]]
             for alt in remaining[:3]:
                 print(f"    [~] Trying @{alt['username']}...")
                 joined, status = await join_group(client, alt)
