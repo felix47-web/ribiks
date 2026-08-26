@@ -160,6 +160,47 @@ Reply with ONLY the JSON object:'''
     return parse_json_response(response)
 
 
+def clean_reply(text):
+    if not text:
+        return None
+
+    text = text.strip()
+
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+
+    lines = text.split('\n')
+    clean_lines = []
+    preamble_patterns = [
+        r"^(here'?s|this is|my reply|my response|the reply|reply|response|answer)",
+        r"^(based on|given|considering|analyzing|looking at)",
+        r"(intent|sentiment|summary|reasoning|analysis|classification|relationship):",
+    ]
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        is_preamble = False
+        for pat in preamble_patterns:
+            if re.search(pat, stripped, re.IGNORECASE):
+                is_preamble = True
+                break
+        if not is_preamble:
+            clean_lines.append(stripped)
+
+    if clean_lines:
+        result = clean_lines[-1]
+    else:
+        result = text.strip()
+
+    result = result.strip('"').strip("'").strip('*').strip('_')
+
+    if not result or len(result) < 2:
+        return None
+
+    return result
+
+
 async def generate_ai_reply(msg_text, sender_name, sender_gender, user_gender, relationship, intent_analysis, chat_context=""):
     intent = intent_analysis.get("intent", "other") if intent_analysis else "other"
     sentiment = intent_analysis.get("sentiment", "neutral") if intent_analysis else "neutral"
@@ -234,7 +275,7 @@ Reply with ONLY the reply text, nothing else:'''
     ]
     response = await zen_chat(messages, timeout=30)
     if response:
-        cleaned = response.strip().strip('"').strip("'")
+        cleaned = clean_reply(response)
         if cleaned and len(cleaned) > 2:
             return cleaned
 
