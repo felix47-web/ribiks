@@ -92,7 +92,7 @@ async def _discover_zen_models():
 
 def _extract_content(data):
     msg = data["choices"][0]["message"]
-    content = msg.get("content") or msg.get("reasoning_content") or ""
+    content = msg.get("content") or ""
     content = content.strip()
     content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
     return content if content else None
