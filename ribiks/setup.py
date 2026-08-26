@@ -76,6 +76,7 @@ def run_config():
     print(f"  [3] Gender    : {(cfg.get('user_gender') or 'Not set').capitalize()}")
     print(f"  [4] AI Model  : {cfg.get('ai_model', 'free models')}")
     print(f"  [5] Reply Style: {cfg.get('reply_style', 'sweet and caring')}")
+    print(f"  [6] Zen Key 2 : {'Set' if cfg.get('zen_api_key_2') else 'Not set'}")
     print(f"  [0] Back\n")
 
     choice = input("  > Select to edit: ").strip()
@@ -107,6 +108,17 @@ def run_config():
         val = input(f"  > Style [{cfg.get('reply_style')}]: ").strip()
         if val:
             cfg["reply_style"] = val
+    elif choice == "6":
+        current = cfg.get("zen_api_key_2", "")
+        masked = (current[:8] + "..." + current[-6:]) if current and len(current) > 14 else "Not set"
+        print(f"  > Current: {masked}")
+        val = input("  > Enter new Zen API Key 2 (or 'clear' to remove): ").strip()
+        if val.lower() == "clear":
+            cfg["zen_api_key_2"] = None
+            print("[+] Key 2 cleared.")
+        elif val:
+            cfg["zen_api_key_2"] = val
+            print("[+] Key 2 updated.")
     else:
         return
 

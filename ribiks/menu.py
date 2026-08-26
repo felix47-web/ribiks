@@ -31,7 +31,8 @@ def show_status():
     print(f"  [i] Phone    : {cfg.get('phone', 'Not set')}")
     print(f"  [i] API ID   : {'Set' if cfg.get('api_id') else 'Not set'}")
     print(f"  [i] Gender   : {(cfg.get('user_gender') or 'Not set').capitalize()}")
-    print(f"  [i] AI Key   : {'Set' if cfg.get('ai_api_key') else 'Not set'}")
+    print(f"  [i] AI Key 1 : {'Set' if cfg.get('ai_api_key') else 'Not set'}")
+    print(f"  [i] AI Key 2 : {'Set' if cfg.get('zen_api_key_2') else 'Not set'}")
     print(f"  [i] Targets  : {len(enabled)} account(s)")
     if enabled:
         for a in enabled:

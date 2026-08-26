@@ -33,42 +33,82 @@ FREE_MODELS = [
     "muse-spark-1.2-contributor-free",
 ]
 
-CHAT_HISTORY_LIMIT = 20
+RACE_TIMEOUT = 15
+FALLBACK_TIMEOUT = 10
 
 
-async def zen_chat(messages, base_timeout=60, timeout_step=30, max_retries=2):
+async def _try_model(session, model, messages, api_key, timeout):
     payload = {
+        "model": model,
         "messages": messages,
         "max_tokens": 512,
         "temperature": 0.8,
     }
-    async with aiohttp.ClientSession() as session:
-        for model in FREE_MODELS:
-            current_timeout = base_timeout + (FREE_MODELS.index(model) * timeout_step)
-            payload["model"] = model
-            for retry in range(max_retries):
-                try:
-                    async with session.post(
-                        ZEN_URL, json=payload, timeout=aiohttp.ClientTimeout(total=current_timeout)
-                    ) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            content = data["choices"][0]["message"]["content"].strip()
-                            if content:
-                                return content
-                        else:
-                            print(f"    [~] Model {model}: HTTP {resp.status}")
-                            break
-                except asyncio.TimeoutError:
-                    if retry < max_retries - 1:
-                        print(f"    [~] Model {model}: Timeout at {current_timeout}s, retrying in 5s...")
-                        await asyncio.sleep(5)
-                    else:
-                        print(f"    [~] Model {model}: Timeout after {max_retries} attempts")
-                except Exception as e:
-                    print(f"    [~] Model {model}: {type(e).__name__}: {e}")
-                    break
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        async with session.post(
+            ZEN_URL, json=payload, headers=headers,
+            timeout=aiohttp.ClientTimeout(total=timeout),
+        ) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                content = data["choices"][0]["message"]["content"].strip()
+                if content:
+                    return content
+            else:
+                print(f"    [~] {model}: HTTP {resp.status}")
+    except asyncio.TimeoutError:
+        print(f"    [~] {model}: Timeout at {timeout}s")
+    except Exception as e:
+        print(f"    [~] {model}: {type(e).__name__}: {e}")
     return None
+
+
+async def zen_chat(messages, timeout=None):
+    from .config import load_zen_keys
+
+    if timeout is None:
+        timeout = RACE_TIMEOUT
+
+    keys = load_zen_keys()
+    key1 = keys[0] if len(keys) > 0 else None
+    key2 = keys[1] if len(keys) > 1 else None
+
+    async with aiohttp.ClientSession() as session:
+        pairs = []
+        models_copy = FREE_MODELS[:]
+        while models_copy:
+            m1 = models_copy.pop(0)
+            m2 = models_copy.pop(0) if models_copy else None
+            pairs.append((m1, m2))
+
+        for i, (m1, m2) in enumerate(pairs):
+            k1 = key1 if key1 else None
+            k2 = key2 if key2 else k1
+
+            tasks = [_try_model(session, m1, messages, k1, timeout)]
+            if m2:
+                tasks.append(_try_model(session, m2, messages, k2, timeout))
+
+            done = await asyncio.gather(*tasks)
+            for result in done:
+                if result:
+                    return result
+
+            print(f"    [~] Race {i + 1} failed, trying next pair...")
+
+        print("    [!] All races exhausted, trying sequential fallback...")
+        for model in FREE_MODELS:
+            result = await _try_model(session, model, messages, key1, FALLBACK_TIMEOUT)
+            if result:
+                return result
+
+    return None
+
+
+CHAT_HISTORY_LIMIT = 20
 
 
 def parse_json_response(text):

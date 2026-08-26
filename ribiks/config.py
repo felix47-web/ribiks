@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
     "ai_provider": "opencode",
     "ai_model": None,
     "ai_api_key": None,
+    "zen_api_key_2": None,
     "reply_style": "sweet and caring",
     "max_reply_length": 200,
     "user_gender": None,
@@ -90,6 +91,18 @@ def get_session_path():
     cfg = load_config()
     os.makedirs(SESSION_DIR, exist_ok=True)
     return os.path.join(SESSION_DIR, cfg.get("session_name", "ribiks_session"))
+
+
+def load_zen_keys():
+    cfg = load_config()
+    keys = []
+    k1 = cfg.get("ai_api_key")
+    k2 = cfg.get("zen_api_key_2")
+    if k1:
+        keys.append(k1)
+    if k2:
+        keys.append(k2)
+    return keys
 
 
 def get_chat_path(target):
