@@ -1,4 +1,4 @@
-from .config import load_accounts, add_account, remove_account, list_accounts, save_accounts
+from .config import load_accounts, remove_account, list_accounts, save_accounts
 
 
 def accounts_main(args=None):

@@ -3,7 +3,6 @@ import json
 import random
 
 from .core import ensure_connected
-from .config import load_config
 from .llm import zen_chat
 
 CATEGORIES = [
@@ -23,8 +22,6 @@ COUNTRIES = {
 
 
 async def generate_search_queries(category, country_code, country_name):
-    from .check import parse_json_response
-
     prompt = f"""Generate Telegram search queries for finding public group chats about {category} for people in {country_name}.
 
 Requirements:

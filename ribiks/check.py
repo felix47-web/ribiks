@@ -8,7 +8,6 @@ from .config import (
     load_accounts,
     load_config,
     save_accounts,
-    load_chat_history,
     save_chat_history,
 )
 from .llm import zen_chat
@@ -19,7 +18,6 @@ from .evolution import (
     get_relationship_prompt,
 )
 
-ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
 
 
 CHAT_HISTORY_LIMIT = 20

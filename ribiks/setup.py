@@ -1,8 +1,6 @@
-import os
-import sys
 import asyncio
 
-from .config import load_config, save_config, SESSION_DIR
+from .config import load_config, save_config
 from .core import setup_auth
 
 

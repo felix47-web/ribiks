@@ -4,7 +4,6 @@ import os
 from datetime import datetime
 
 from .core import ensure_connected
-from .config import load_config
 
 
 async def run_groups_check():

@@ -7,8 +7,6 @@ import py_compile
 import zipfile
 import json
 import urllib.request
-import shutil
-from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(BASE_DIR, "ribiks")
