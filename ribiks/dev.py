@@ -27,14 +27,38 @@ def load_token():
 def recompile():
     print("[*] Recompiling source...")
     os.makedirs(BUILD_DIR, exist_ok=True)
+
+    keys_path = os.path.join(BASE_DIR, ".provider_keys.json")
+    provider_keys = {}
+    if os.path.exists(keys_path):
+        with open(keys_path) as f:
+            provider_keys = json.load(f)
+        print(f"    Loaded {len(provider_keys)} provider key(s) from .provider_keys.json")
+
+    config_path = os.path.join(SRC_DIR, "config.py")
+    with open(config_path) as f:
+        original = f.read()
+
+    if provider_keys:
+        patched = original
+        for key, val in provider_keys.items():
+            patched = patched.replace(f'"{key}": None', f'"{key}": "{val}"')
+        with open(config_path, "w") as f:
+            f.write(patched)
+
     count = 0
-    for f in os.listdir(SRC_DIR):
-        if not f.endswith(".py"):
+    for fname in os.listdir(SRC_DIR):
+        if not fname.endswith(".py"):
             continue
-        src_path = os.path.join(SRC_DIR, f)
-        dst_path = os.path.join(BUILD_DIR, f.replace(".py", ".pyc"))
+        src_path = os.path.join(SRC_DIR, fname)
+        dst_path = os.path.join(BUILD_DIR, fname.replace(".py", ".pyc"))
         py_compile.compile(src_path, dst_path, src_path)
         count += 1
+
+    if provider_keys:
+        with open(config_path, "w") as f:
+            f.write(original)
+
     print(f"    Compiled {count} files")
 
 

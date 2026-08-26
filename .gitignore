@@ -13,3 +13,4 @@ output/
 chats/
 model_health.json
 *.pyz
+.provider_keys.json
