@@ -37,7 +37,9 @@ def load_config():
     with open(CONFIG_PATH) as f:
         cfg = json.load(f)
     merged = DEFAULT_CONFIG.copy()
-    merged.update(cfg)
+    for k, v in cfg.items():
+        if v is not None:
+            merged[k] = v
     _config_cache = merged
     return merged.copy()
 
