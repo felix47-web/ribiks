@@ -37,9 +37,8 @@ def show_status():
     print(f"  [i] Targets  : {len(enabled)} account(s)")
     if enabled:
         for a in enabled:
-            rel = a.get("relationship", "romantic")
-            score = a.get("romance_score", 0)
-            print(f"      - {a['target']} [{rel}, score:{score}]")
+            rel = a.get("relationship", "undetermined")
+            print(f"      - {a['target']} [{rel}]")
     print()
 
 

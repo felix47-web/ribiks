@@ -15,8 +15,8 @@ from .config import (
 )
 from .gender import detect_gender, get_gender_emoji
 from .evolution import (
-    update_romance_score,
-    check_relationship_evolution,
+    detect_relationship_via_ai,
+    get_fallback_relationship,
     get_relationship_prompt,
 )
 
@@ -73,15 +73,19 @@ def parse_json_response(text):
 
 
 def format_chat_for_ai(messages, my_name="You"):
+    now = datetime.now(timezone.utc)
+    now_str = now.strftime("%A, %B %d, %Y at %H:%M UTC")
+
     if not messages:
         return "No previous conversation history."
-    lines = []
+
+    lines = [f"Current time: {now_str}"]
     for m in reversed(messages):
         ts = m.get("date", "")
         if ts:
             try:
                 dt = datetime.fromisoformat(ts)
-                ts = dt.strftime("%H:%M")
+                ts = dt.strftime("%a %b %d, %H:%M")
             except (ValueError, TypeError):
                 ts = ""
         speaker = my_name if m.get("from_me") else m.get("sender", "Them")
@@ -200,16 +204,27 @@ What to do: {instruction}
 
 Original message from {sender_name}: "{msg_text}"
 
-Generate a natural, contextual reply that:
-- Directly addresses what the message is about
-- Matches the intent and sentiment
-- Fits the {relationship} relationship style
-- References the conversation history when relevant (but don't repeat what was already said)
-- Is 1-2 sentences max
-- Uses emojis sparingly and naturally
+TIME AWARENESS (critical):
+- The chat history includes timestamps — use them
+- If the message was sent today, reply as if its happening now
+- If the message was sent yesterday or earlier, acknowledge the gap naturally (e.g. "sorry just seeing this", "oh i missed this", "just saw this")
+- Match your tense to when the message was sent — dont say "that sounds great" about something from 3 days ago
+- If they messaged days ago and you're replying now, its okay to shift topics or just acknowledge the late reply casually
+- Pay attention to day names in timestamps (Mon, Tue, etc) to figure out relative timing
+
+Generate a reply that sounds like a real person texting:
+- Be natural, conversational, and authentic
+- Match the way real people text — casual, imperfect, human
+- Use contractions (dont, cant, youre, im)
+- Vary your sentence length — some short, some longer
+- Occasionally use casual filler like "haha", "lol", "ngl", "tbh" where it fits
+- Mirror the energy and tone of the original message
+- Never use more than 1 emoji per reply, and only if the other person uses emojis
+- Never starts sentences with emojis
 - Never mentions being AI or a bot
 - Never breaks character
-- Sounds like a real person texting
+- Keep it 1-2 sentences max
+- Sound like you actually care about what they said
 
 Reply with ONLY the reply text, nothing else:'''
 
@@ -268,8 +283,8 @@ async def run_check():
     print(f"[+] Logged in as: {me.first_name} (@{me.username})")
 
     total_replied = 0
-    evolutions = []
     skipped = 0
+    relationship_updates = []
 
     for target in targets:
         try:
@@ -280,8 +295,7 @@ async def run_check():
                 continue
 
             acc = accounts[acc_idx]
-            current_relationship = acc.get("relationship", "romantic")
-            current_score = acc.get("romance_score", 0)
+            current_relationship = acc.get("relationship", "undetermined")
 
             chat_messages = await save_chat_from_telegram(client, entity, target)
 
@@ -301,28 +315,21 @@ async def run_check():
             sender_gender = detect_gender(sender_name)
             gender_icon = get_gender_emoji(sender_gender)
 
-            incoming_msgs = [m for m in chat_messages if not m.get("from_me")]
-            if incoming_msgs:
-                recent_incoming = []
-                async for msg in client.iter_messages(entity, limit=10):
-                    if not msg.out:
-                        recent_incoming.append(msg)
-                new_score = update_romance_score(current_score, recent_incoming)
-                accounts[acc_idx]["romance_score"] = new_score
+            chat_context = format_chat_for_ai(chat_messages, my_name)
 
-            new_relationship, evolved = check_relationship_evolution(
-                target, current_relationship, accounts[acc_idx]["romance_score"]
+            new_relationship, confidence, reasoning = await detect_relationship_via_ai(
+                chat_context, sender_name, sender_gender, user_gender
             )
 
-            if evolved:
+            if not new_relationship:
+                new_relationship, confidence, reasoning = get_fallback_relationship(chat_context)
+
+            if new_relationship != current_relationship:
                 accounts[acc_idx]["relationship"] = new_relationship
-                emoji = "💕" if new_relationship == "romantic" else "🤝"
-                print(f"  {emoji} {target}: Relationship evolved: {current_relationship} -> {new_relationship}")
-                evolutions.append((target, current_relationship, new_relationship))
+                relationship_updates.append((target, current_relationship, new_relationship, confidence))
+                print(f"  [*] {target}: Relationship updated: {current_relationship} -> {new_relationship} (confidence: {confidence})")
 
-            relationship = accounts[acc_idx].get("relationship", "romantic")
-
-            chat_context = format_chat_for_ai(chat_messages, my_name)
+            relationship = accounts[acc_idx].get("relationship", "polite")
 
             reply = await generate_reply(last_text, sender_name, sender_gender, user_gender, relationship, chat_context)
 
@@ -339,7 +346,7 @@ async def run_check():
             accounts[acc_idx]["replied_messages"].append(last_msg_id)
             accounts[acc_idx]["replied_messages"] = accounts[acc_idx]["replied_messages"][-100:]
 
-            rel_icon = {"romantic": "💕", "friendly": "🤝", "polite": "👔"}.get(relationship, "❓")
+            rel_icon = {"romantic": "💕", "friendly": "🤝", "polite": "👔", "professional": "💼"}.get(relationship, "❓")
             print(f"  [>] {target}: {gender_icon}{sender_name} [{relationship}{rel_icon}]")
             print(f"      msg: '{last_text[:60]}...'")
             print(f"      reply: '{reply[:60]}...'")
@@ -353,10 +360,10 @@ async def run_check():
     print(f"\n[+] Done. Replied to {total_replied} messages across {len(targets)} accounts.")
     if skipped:
         print(f"  Skipped {skipped} message(s) - API unavailable.")
-    if evolutions:
-        print("\n  Relationship evolutions:")
-        for target, old_rel, new_rel in evolutions:
-            print(f"    {target}: {old_rel} -> {new_rel}")
+    if relationship_updates:
+        print("\n  Relationship updates:")
+        for target, old_rel, new_rel, conf in relationship_updates:
+            print(f"    {target}: {old_rel} -> {new_rel} (confidence: {conf})")
 
     await client.disconnect()
 
