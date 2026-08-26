@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import aiohttp
 from datetime import datetime, timezone
 
@@ -15,7 +16,7 @@ HEALTH_PATH = os.path.join(BASE_DIR, "model_health.json")
 HEALTH_EXPIRY = 300
 
 ZEN_FALLBACK_MODELS = ["hy3-free", "laguna-s-2.1-free", "big-pickle", "mimo-v2.5-free"]
-GROQ_MODELS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
+GROQ_MODELS = ["qwen/qwen3.8-27b", "qwen/qwen3.6-27b", "openai/gpt-oss-20b", "groq/compound"]
 TOGETHER_MODELS = ["Prism-ML/Ternary-Bonsai-27B"]
 
 RACE_TIMEOUT = 10
@@ -89,21 +90,21 @@ async def _discover_zen_models():
         return ZEN_FALLBACK_MODELS
 
 
+def _extract_content(data):
+    msg = data["choices"][0]["message"]
+    content = msg.get("content") or msg.get("reasoning_content") or ""
+    content = content.strip()
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    return content if content else None
+
+
 async def _try_zen(session, model, messages, timeout):
-    payload = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": 512,
-        "temperature": 0.8,
-    }
+    payload = {"model": model, "messages": messages, "max_tokens": 512, "temperature": 0.8}
     try:
-        async with session.post(
-            ZEN_CHAT_URL, json=payload,
-            timeout=aiohttp.ClientTimeout(total=timeout),
-        ) as resp:
+        async with session.post(ZEN_CHAT_URL, json=payload, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
             if resp.status == 200:
                 data = await resp.json()
-                content = data["choices"][0]["message"]["content"].strip()
+                content = _extract_content(data)
                 if content:
                     _mark_ok(model)
                     return content
@@ -117,21 +118,13 @@ async def _try_zen(session, model, messages, timeout):
 async def _try_groq(session, model, messages, timeout, api_key):
     if not api_key:
         return None
-    payload = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": 512,
-        "temperature": 0.8,
-    }
+    payload = {"model": model, "messages": messages, "max_tokens": 512, "temperature": 0.8}
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
-        async with session.post(
-            GROQ_CHAT_URL, json=payload, headers=headers,
-            timeout=aiohttp.ClientTimeout(total=timeout),
-        ) as resp:
+        async with session.post(GROQ_CHAT_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
             if resp.status == 200:
                 data = await resp.json()
-                content = data["choices"][0]["message"]["content"].strip()
+                content = _extract_content(data)
                 if content:
                     _mark_ok(f"groq:{model}")
                     return content
@@ -145,21 +138,13 @@ async def _try_groq(session, model, messages, timeout, api_key):
 async def _try_together(session, model, messages, timeout, api_key):
     if not api_key:
         return None
-    payload = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": 512,
-        "temperature": 0.8,
-    }
+    payload = {"model": model, "messages": messages, "max_tokens": 512, "temperature": 0.8}
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
-        async with session.post(
-            TOGETHER_CHAT_URL, json=payload, headers=headers,
-            timeout=aiohttp.ClientTimeout(total=timeout),
-        ) as resp:
+        async with session.post(TOGETHER_CHAT_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
             if resp.status == 200:
                 data = await resp.json()
-                content = data["choices"][0]["message"]["content"].strip()
+                content = _extract_content(data)
                 if content:
                     _mark_ok(f"together:{model}")
                     return content
@@ -184,43 +169,44 @@ async def zen_chat(messages, timeout=None):
 
     zen_models = await _discover_zen_models()
     healthy_zen = [m for m in zen_models if _is_healthy(m)]
-    all_zen = healthy_zen + [m for m in zen_models if not _is_healthy(m)]
 
-    async with aiohttp.ClientSession() as session:
-        pairs = []
-        models_copy = all_zen[:]
-        while models_copy:
-            m1 = models_copy.pop(0)
-            m2 = models_copy.pop(0) if models_copy else None
-            pairs.append((m1, m2))
+    if healthy_zen:
+        async with aiohttp.ClientSession() as session:
+            pairs = []
+            models_copy = healthy_zen[:]
+            while models_copy:
+                m1 = models_copy.pop(0)
+                m2 = models_copy.pop(0) if models_copy else None
+                pairs.append((m1, m2))
 
-        for i, (m1, m2) in enumerate(pairs):
-            tasks = [_try_zen(session, m1, messages, timeout)]
-            if m2:
-                tasks.append(_try_zen(session, m2, messages, timeout))
+            for i, (m1, m2) in enumerate(pairs):
+                tasks = [_try_zen(session, m1, messages, timeout)]
+                if m2:
+                    tasks.append(_try_zen(session, m2, messages, timeout))
 
-            done = await asyncio.gather(*tasks)
-            for result in done:
+                done = await asyncio.gather(*tasks)
+                for result in done:
+                    if result:
+                        return result
+
+    if groq_key:
+        print("    [!] Zen failed, trying Groq fallback...")
+        async with aiohttp.ClientSession() as session:
+            for model in GROQ_MODELS:
+                if not _is_healthy(f"groq:{model}"):
+                    continue
+                result = await _try_groq(session, model, messages, FALLBACK_TIMEOUT, groq_key)
                 if result:
                     return result
 
-        for model in all_zen:
-            result = await _try_zen(session, model, messages, FALLBACK_TIMEOUT)
-            if result:
-                return result
-
-    print("    [!] Zen failed, trying Groq fallback...")
-    async with aiohttp.ClientSession() as session:
-        for model in GROQ_MODELS:
-            result = await _try_groq(session, model, messages, FALLBACK_TIMEOUT, groq_key)
-            if result:
-                return result
-
-    print("    [!] Groq failed, trying Together fallback...")
-    async with aiohttp.ClientSession() as session:
-        for model in TOGETHER_MODELS:
-            result = await _try_together(session, model, messages, FALLBACK_TIMEOUT, together_key)
-            if result:
-                return result
+    if together_key:
+        print("    [!] Groq failed, trying Together fallback...")
+        async with aiohttp.ClientSession() as session:
+            for model in TOGETHER_MODELS:
+                if not _is_healthy(f"together:{model}"):
+                    continue
+                result = await _try_together(session, model, messages, FALLBACK_TIMEOUT, together_key)
+                if result:
+                    return result
 
     return None
