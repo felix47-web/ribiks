@@ -30,7 +30,7 @@ Classification guide:
         {"role": "system", "content": "You are a relationship classifier. Reply with only valid JSON."},
         {"role": "user", "content": prompt},
     ]
-    response = await zen_chat(messages, timeout=30)
+    response = await zen_chat(messages)
     result = parse_json_response(response)
 
     if result and "relationship" in result:
