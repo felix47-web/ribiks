@@ -65,6 +65,11 @@ def run_config_cmd():
     run_config()
 
 
+def run_hopin_cmd():
+    from .hopin import hopin_main
+    hopin_main()
+
+
 def run_update_cmd():
     from .updates import do_update
     do_update()
@@ -77,7 +82,8 @@ MENU_OPTIONS = {
     "4": ("Setup / Reconfigure", run_setup_cmd),
     "5": ("Configuration", run_config_cmd),
     "6": ("Status", show_status),
-    "7": ("Check for Updates", run_update_cmd),
+    "7": ("Hop In Group", run_hopin_cmd),
+    "8": ("Check for Updates", run_update_cmd),
 }
 
 

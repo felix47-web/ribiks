@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ribiks.menu import menu_main, run_check_cmd, run_groups_cmd, run_setup_cmd, run_config_cmd
 from ribiks.accounts import accounts_main
+from ribiks.hopin import hopin_main
 
 
 USAGE = """
@@ -21,6 +22,7 @@ USAGE = """
     ribiks accounts list    List auto-reply targets
     ribiks accounts add     Add target account
     ribiks accounts remove  Remove target account
+    ribiks hopin            Hop in a random group (US/Germany)
     ribiks update           Check for and install updates
     ribiks update --check   Check only (don't install)
 """
@@ -52,6 +54,8 @@ def main():
             check_for_updates()
         else:
             do_update()
+    elif cmd == "hopin":
+        hopin_main()
     elif cmd == "accounts":
         accounts_main(args[1:])
     elif cmd in ("-h", "--help", "help"):

@@ -1,2 +1,2 @@
-__version__ = "1.8.1"
-__codename__ = "Ribiks"
+__version__ = "1.9.0"
+__codename__ = "Hop In"
