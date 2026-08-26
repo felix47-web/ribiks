@@ -29,12 +29,14 @@ FREE_MODELS = [
     "big-pickle",
     "mimo-v2.5-free",
     "nemotron-3.5-lightning-free",
+    "deepseek-v4-flash-free",
+    "muse-spark-1.2-contributor-free",
 ]
 
 CHAT_HISTORY_LIMIT = 20
 
 
-async def zen_chat(messages, timeout=60):
+async def zen_chat(messages, base_timeout=60, timeout_step=30, max_retries=2):
     payload = {
         "messages": messages,
         "max_tokens": 512,
@@ -42,21 +44,30 @@ async def zen_chat(messages, timeout=60):
     }
     async with aiohttp.ClientSession() as session:
         for model in FREE_MODELS:
+            current_timeout = base_timeout + (FREE_MODELS.index(model) * timeout_step)
             payload["model"] = model
-            try:
-                async with session.post(
-                    ZEN_URL, json=payload, timeout=aiohttp.ClientTimeout(total=timeout)
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        content = data["choices"][0]["message"]["content"].strip()
-                        if content:
-                            return content
+            for retry in range(max_retries):
+                try:
+                    async with session.post(
+                        ZEN_URL, json=payload, timeout=aiohttp.ClientTimeout(total=current_timeout)
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            content = data["choices"][0]["message"]["content"].strip()
+                            if content:
+                                return content
+                        else:
+                            print(f"    [~] Model {model}: HTTP {resp.status}")
+                            break
+                except asyncio.TimeoutError:
+                    if retry < max_retries - 1:
+                        print(f"    [~] Model {model}: Timeout at {current_timeout}s, retrying in 5s...")
+                        await asyncio.sleep(5)
                     else:
-                        print(f"    [~] Model {model}: HTTP {resp.status}")
-            except Exception as e:
-                print(f"    [~] Model {model}: {type(e).__name__}")
-                continue
+                        print(f"    [~] Model {model}: Timeout after {max_retries} attempts")
+                except Exception as e:
+                    print(f"    [~] Model {model}: {type(e).__name__}: {e}")
+                    break
     return None
 
 
