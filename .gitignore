@@ -10,3 +10,6 @@ accounts.json
 sessions/
 output/
 .git/
+chats/
+model_health.json
+*.pyz
