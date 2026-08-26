@@ -38,7 +38,7 @@ def load_config():
         cfg = json.load(f)
     merged = DEFAULT_CONFIG.copy()
     for k, v in cfg.items():
-        if v is not None:
+        if v is not None and v != "":
             merged[k] = v
     _config_cache = merged
     return merged.copy()
