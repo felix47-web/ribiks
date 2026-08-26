@@ -342,16 +342,22 @@ async def process_target(client, target, acc_idx, accounts, my_name, user_gender
 
             chat_context = format_chat_for_ai(chat_messages, my_name)
 
-            new_relationship, confidence, reasoning = await detect_relationship_via_ai(
-                chat_context, sender_name, sender_gender, user_gender
-            )
+            reply_count = acc.get("reply_count", 0)
+            evolved = False
+            confidence = "cached"
 
-            if not new_relationship:
-                new_relationship, confidence, reasoning = get_fallback_relationship(chat_context)
+            if reply_count % 10 == 0:
+                new_relationship, conf, reasoning = await detect_relationship_via_ai(
+                    chat_context, sender_name, sender_gender, user_gender
+                )
 
-            evolved = new_relationship != current_relationship
-            if evolved:
-                accounts[acc_idx]["relationship"] = new_relationship
+                if not new_relationship:
+                    new_relationship, conf, reasoning = get_fallback_relationship(chat_context)
+
+                confidence = conf
+                evolved = new_relationship != current_relationship
+                if evolved:
+                    accounts[acc_idx]["relationship"] = new_relationship
 
             relationship = accounts[acc_idx].get("relationship", "polite")
 
@@ -367,6 +373,7 @@ async def process_target(client, target, acc_idx, accounts, my_name, user_gender
             replied = accounts[acc_idx].get("replied_messages", [])
             replied.append(last_msg_id)
             accounts[acc_idx]["replied_messages"] = replied[-100:]
+            accounts[acc_idx]["reply_count"] = reply_count + 1
 
             rel_icon = {"romantic": "💕", "friendly": "🤝", "polite": "👔", "professional": "💼"}.get(relationship, "❓")
             print(f"  [>] {target}: {gender_icon}{sender_name} [{relationship}{rel_icon}]")
@@ -378,8 +385,8 @@ async def process_target(client, target, acc_idx, accounts, my_name, user_gender
                 "replied": True,
                 "evolved": evolved,
                 "old_relationship": current_relationship,
-                "new_relationship": new_relationship,
-                "confidence": confidence,
+                "new_relationship": accounts[acc_idx].get("relationship", current_relationship),
+                "confidence": confidence if reply_count % 10 == 0 else "cached",
             }
             await asyncio.sleep(2)
             return result

@@ -42,6 +42,7 @@ def accounts_main(args=None):
             "target": target,
             "enabled": True,
             "relationship": "undetermined",
+            "reply_count": 0,
         }
         if not any(a["target"] == target for a in accounts):
             accounts.append(entry)
