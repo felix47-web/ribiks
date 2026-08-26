@@ -76,7 +76,8 @@ def run_config():
     print(f"  [3] Gender    : {(cfg.get('user_gender') or 'Not set').capitalize()}")
     print(f"  [4] AI Model  : {cfg.get('ai_model', 'free models')}")
     print(f"  [5] Reply Style: {cfg.get('reply_style', 'sweet and caring')}")
-    print(f"  [6] Zen Key 2 : {'Set' if cfg.get('zen_api_key_2') else 'Not set'}")
+    print(f"  [6] Groq Key  : {'Set' if cfg.get('groq_api_key') else 'Not set'}")
+    print(f"  [7] Together  : {'Set' if cfg.get('together_api_key') else 'Not set'}")
     print(f"  [0] Back\n")
 
     choice = input("  > Select to edit: ").strip()
@@ -109,16 +110,29 @@ def run_config():
         if val:
             cfg["reply_style"] = val
     elif choice == "6":
-        current = cfg.get("zen_api_key_2", "")
+        current = cfg.get("groq_api_key", "")
         masked = (current[:8] + "..." + current[-6:]) if current and len(current) > 14 else "Not set"
         print(f"  > Current: {masked}")
-        val = input("  > Enter new Zen API Key 2 (or 'clear' to remove): ").strip()
+        print("  > Get free key at: https://console.groq.com")
+        val = input("  > Enter Groq API Key (or 'clear' to remove): ").strip()
         if val.lower() == "clear":
-            cfg["zen_api_key_2"] = None
-            print("[+] Key 2 cleared.")
+            cfg["groq_api_key"] = None
+            print("[+] Groq key cleared.")
         elif val:
-            cfg["zen_api_key_2"] = val
-            print("[+] Key 2 updated.")
+            cfg["groq_api_key"] = val
+            print("[+] Groq key updated.")
+    elif choice == "7":
+        current = cfg.get("together_api_key", "")
+        masked = (current[:8] + "..." + current[-6:]) if current and len(current) > 14 else "Not set"
+        print(f"  > Current: {masked}")
+        print("  > Get free key at: https://api.together.ai")
+        val = input("  > Enter Together API Key (or 'clear' to remove): ").strip()
+        if val.lower() == "clear":
+            cfg["together_api_key"] = None
+            print("[+] Together key cleared.")
+        elif val:
+            cfg["together_api_key"] = val
+            print("[+] Together key updated.")
     else:
         return
 

@@ -4,7 +4,7 @@ import random
 
 from .core import ensure_connected
 from .config import load_config
-from .check import zen_chat
+from .llm import zen_chat
 
 CATEGORIES = [
     "football",

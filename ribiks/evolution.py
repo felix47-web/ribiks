@@ -1,5 +1,6 @@
 async def detect_relationship_via_ai(chat_context, sender_name, sender_gender, user_gender):
-    from .check import zen_chat, parse_json_response
+    from .llm import zen_chat
+    from .check import parse_json_response
 
     if not chat_context or chat_context == "No previous conversation history.":
         return None, None, None

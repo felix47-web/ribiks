@@ -3,8 +3,6 @@ import json
 import re
 from datetime import datetime, timezone
 
-import aiohttp
-
 from .core import ensure_connected
 from .config import (
     load_accounts,
@@ -13,6 +11,7 @@ from .config import (
     load_chat_history,
     save_chat_history,
 )
+from .llm import zen_chat
 from .gender import detect_gender, get_gender_emoji
 from .evolution import (
     detect_relationship_via_ai,
@@ -21,106 +20,6 @@ from .evolution import (
 )
 
 ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
-FREE_MODELS = [
-    "hy3-free",
-    "laguna-s-2.1-free",
-    "big-pickle",
-    "mimo-v2.5-free",
-]
-
-RACE_TIMEOUT = 10
-FALLBACK_TIMEOUT = 8
-HEALTH_EXPIRY = 300
-
-_model_health = {}
-
-
-def _is_healthy(model):
-    if model not in _model_health:
-        return True
-    last_fail, fail_time = _model_health[model]
-    if not last_fail:
-        return True
-    return (datetime.now(timezone.utc) - fail_time).total_seconds() > HEALTH_EXPIRY
-
-
-def _mark_failed(model):
-    _model_health[model] = (True, datetime.now(timezone.utc))
-
-
-def _mark_ok(model):
-    _model_health[model] = (False, datetime.now(timezone.utc))
-
-
-def _sorted_models():
-    healthy = [m for m in FREE_MODELS if _is_healthy(m)]
-    unhealthy = [m for m in FREE_MODELS if not _is_healthy(m)]
-    return healthy + unhealthy
-
-
-async def _try_model(session, model, messages, timeout):
-    payload = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": 512,
-        "temperature": 0.8,
-    }
-    try:
-        async with session.post(
-            ZEN_URL, json=payload,
-            timeout=aiohttp.ClientTimeout(total=timeout),
-        ) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                content = data["choices"][0]["message"]["content"].strip()
-                if content:
-                    _mark_ok(model)
-                    return content
-            else:
-                _mark_failed(model)
-                print(f"    [~] {model}: HTTP {resp.status}")
-    except asyncio.TimeoutError:
-        _mark_failed(model)
-        print(f"    [~] {model}: Timeout at {timeout}s")
-    except Exception as e:
-        _mark_failed(model)
-        print(f"    [~] {model}: {type(e).__name__}: {e}")
-    return None
-
-
-async def zen_chat(messages, timeout=None):
-    if timeout is None:
-        timeout = RACE_TIMEOUT
-
-    models = _sorted_models()
-
-    async with aiohttp.ClientSession() as session:
-        pairs = []
-        models_copy = models[:]
-        while models_copy:
-            m1 = models_copy.pop(0)
-            m2 = models_copy.pop(0) if models_copy else None
-            pairs.append((m1, m2))
-
-        for i, (m1, m2) in enumerate(pairs):
-            tasks = [_try_model(session, m1, messages, timeout)]
-            if m2:
-                tasks.append(_try_model(session, m2, messages, timeout))
-
-            done = await asyncio.gather(*tasks)
-            for result in done:
-                if result:
-                    return result
-
-            print(f"    [~] Race {i + 1} failed, trying next pair...")
-
-        print("    [!] All races exhausted, trying sequential fallback...")
-        for model in models:
-            result = await _try_model(session, model, messages, FALLBACK_TIMEOUT)
-            if result:
-                return result
-
-    return None
 
 
 CHAT_HISTORY_LIMIT = 20

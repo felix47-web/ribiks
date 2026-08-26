@@ -19,6 +19,8 @@ DEFAULT_CONFIG = {
     "ai_model": None,
     "ai_api_key": None,
     "zen_api_key_2": None,
+    "groq_api_key": None,
+    "together_api_key": None,
     "reply_style": "sweet and caring",
     "max_reply_length": 200,
     "user_gender": None,
