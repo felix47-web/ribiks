@@ -33,8 +33,9 @@ FREE_MODELS = [
     "muse-spark-1.2-contributor-free",
 ]
 
-RACE_TIMEOUT = 15
-FALLBACK_TIMEOUT = 10
+RACE_TIMEOUT = 10
+FALLBACK_TIMEOUT = 8
+MAX_RACES = 3
 
 
 async def _try_model(session, model, messages, api_key, timeout):
@@ -44,12 +45,9 @@ async def _try_model(session, model, messages, api_key, timeout):
         "max_tokens": 512,
         "temperature": 0.8,
     }
-    headers = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
     try:
         async with session.post(
-            ZEN_URL, json=payload, headers=headers,
+            ZEN_URL, json=payload,
             timeout=aiohttp.ClientTimeout(total=timeout),
         ) as resp:
             if resp.status == 200:
@@ -85,6 +83,8 @@ async def zen_chat(messages, timeout=None):
             pairs.append((m1, m2))
 
         for i, (m1, m2) in enumerate(pairs):
+            if i >= MAX_RACES:
+                break
             k1 = key1 if key1 else None
             k2 = key2 if key2 else k1
 
