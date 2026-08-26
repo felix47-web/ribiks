@@ -1,7 +1,5 @@
 import os
 import sys
-import subprocess
-from datetime import datetime
 
 from .config import load_config, load_accounts
 from . import __version__, __codename__

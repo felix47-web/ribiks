@@ -30,7 +30,7 @@ def _load_names():
         "Dupe", "Folasade", "Toyin", "Ronke", "Nike", "Bola", "Moji", "Titi", "Laide",
         "Adenike", "Omotola", "Genevieve", "Stella", "Grace", "Blessing", "Patience",
         "Mercy", "Esther", "Favour", "Success", "Precious", "Vivian", "Gloria", "Joy",
-        "Peace", " Hope", "Charity", "Faith", "Priscilla", "Rebecca", "Sarah", "Hannah",
+        "Peace", "Hope", "Charity", "Faith", "Priscilla", "Rebecca", "Sarah", "Hannah",
         "Deborah", "Ruth", "Victoria", "Felicia", "Cynthia", "Gladys", "Beatrice",
     ]
 

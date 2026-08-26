@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 
 GITHUB_REPO = "felix47-web/ribiks"
 
@@ -24,30 +23,45 @@ DEFAULT_CONFIG = {
     "user_gender": None,
 }
 
+_config_cache = None
+_accounts_cache = None
+
 
 def load_config():
+    global _config_cache
+    if _config_cache is not None:
+        return _config_cache.copy()
     if not os.path.exists(CONFIG_PATH):
         return DEFAULT_CONFIG.copy()
     with open(CONFIG_PATH) as f:
         cfg = json.load(f)
     merged = DEFAULT_CONFIG.copy()
     merged.update(cfg)
-    return merged
+    _config_cache = merged
+    return merged.copy()
 
 
 def save_config(cfg):
+    global _config_cache
+    _config_cache = None
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=2)
 
 
 def load_accounts():
+    global _accounts_cache
+    if _accounts_cache is not None:
+        return [a.copy() for a in _accounts_cache]
     if not os.path.exists(ACCOUNTS_PATH):
         return []
     with open(ACCOUNTS_PATH) as f:
-        return json.load(f)
+        _accounts_cache = json.load(f)
+    return [a.copy() for a in _accounts_cache]
 
 
 def save_accounts(accounts):
+    global _accounts_cache
+    _accounts_cache = [a.copy() for a in accounts]
     with open(ACCOUNTS_PATH, "w") as f:
         json.dump(accounts, f, indent=2)
 

@@ -47,7 +47,8 @@ def build_pyz(version):
     with zipfile.ZipFile(pyz_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in os.listdir(BUILD_DIR):
             if f.endswith(".pyc"):
-                data = open(os.path.join(BUILD_DIR, f), "rb").read()
+                with open(os.path.join(BUILD_DIR, f), "rb") as pf:
+                    data = pf.read()
                 zf.writestr(f"ribiks/{f}", data)
 
         # Create __main__.py
@@ -56,7 +57,8 @@ def build_pyz(version):
             mf.write("from ribiks.cli import main\nmain()\n")
         main_pyc = os.path.join(BUILD_DIR, "__main__.pyc")
         py_compile.compile(main_py, main_pyc, main_py)
-        data = open(main_pyc, "rb").read()
+        with open(main_pyc, "rb") as pf:
+            data = pf.read()
         zf.writestr("__main__.pyc", data)
 
     # Add shebang
@@ -112,7 +114,8 @@ def create_release(token, version, pyz_path):
     req = urllib.request.Request(upload_url_asset, data=file_data, method="POST")
     req.add_header("Authorization", f"token {token}")
     req.add_header("Content-Type", "application/octet-stream")
-    urllib.request.urlopen(req)
+    with urllib.request.urlopen(req) as resp:
+        resp.read()
     print("    Uploaded ribiks.pyz")
 
     print(f"[+] Release created: https://github.com/{REPO}/releases/tag/v{version}")

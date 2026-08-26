@@ -1,7 +1,3 @@
-import re
-import json
-
-
 async def detect_relationship_via_ai(chat_context, sender_name, sender_gender, user_gender):
     from .check import zen_chat, parse_json_response
 
@@ -82,7 +78,7 @@ def get_fallback_relationship(chat_context):
         "romantic": romantic_count,
         "professional": professional_count,
         "polite": polite_count,
-        "friendly": 1,
+        "friendly": 0,
     }
 
     best = max(scores, key=scores.get)
@@ -116,82 +112,3 @@ def get_relationship_prompt(relationship, user_gender, sender_gender):
         return prompts["romantic"].get(key, prompts["romantic"][("male", "female")])
 
     return prompts.get(relationship, prompts["friendly"]).get("default", prompts["friendly"]["default"])
-
-
-def get_fallback_messages(relationship, sender_gender):
-    fallbacks = {
-        "romantic": {
-            "female": [
-                "Aww thats so sweet babe",
-                "I love you so much",
-                "You always make my day better",
-                "Cant stop thinking about you",
-                "Youre the best thing that happened to me",
-                "Missing you right now",
-                "Youre literally the cutest",
-                "My heart belongs to you",
-                "You just made me smile so hard",
-                "Im so lucky to have you",
-                "Youre everything to me babe",
-                "Come here and give me a hug",
-            ],
-            "male": [
-                "Hey handsome",
-                "You always know how to make me smile",
-                "Im so lucky to have you babe",
-                "Miss you already",
-                "Youre my favorite person",
-                "Cant wait to see you",
-                "Youre so sweet to me",
-                "My heart is all yours",
-                "You make me so happy",
-                "I love you more than words can say",
-                "Hey cutie, thinking of you",
-                "Youre the sweetest babe",
-            ],
-        },
-        "friendly": [
-            "Haha thats hilarious",
-            "No way, thats wild",
-            "Thats crazy",
-            "I swear lol",
-            "Lol true true",
-            "For real though",
-            "I feel you",
-            "Haha youre too much",
-            "Thats insane",
-            "LMAOOO",
-            "Youre something else",
-            "Say less",
-            "Thats mad",
-        ],
-        "polite": [
-            "Thats nice, thank you for sharing.",
-            "I appreciate you letting me know.",
-            "Sounds good!",
-            "Noted, thanks.",
-            "Thats great to hear.",
-            "Thank you!",
-            "I see, that makes sense.",
-            "Okay, got it.",
-            "Thats interesting.",
-            "Thanks for the update.",
-        ],
-        "professional": [
-            "Thanks for the update, I'll look into it.",
-            "Noted, I'll follow up on this.",
-            "Sounds good, let me know if anything changes.",
-            "Got it, I'll review this shortly.",
-            "Thanks for bringing this up.",
-            "I'll get back to you on this.",
-            "Understood, thanks.",
-            "Will do, thanks.",
-        ],
-    }
-
-    options = fallbacks.get(relationship, fallbacks["friendly"])
-    if isinstance(options, dict):
-        options = options.get(sender_gender, options.get("female", list(options.values())[0]))
-
-    import random
-    return random.choice(options)
