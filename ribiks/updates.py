@@ -51,6 +51,28 @@ def detect_install_type():
     return "unknown"
 
 
+def _ensure_tor_installed():
+    """Ensure the `tor` binary is present (required for anonymity)."""
+    import shutil
+    if shutil.which("tor"):
+        return True
+    print("[i] Tor not found. Installing (required for anonymity)...")
+    try:
+        if shutil.which("pkg"):
+            subprocess.run(["pkg", "install", "-y", "tor"],
+                           check=False)
+        elif shutil.which("apt"):
+            subprocess.run(["sudo", "apt", "install", "-y", "tor"],
+                           check=False)
+        else:
+            print("[!] Please install Tor manually: pkg install tor  (or: sudo apt install tor)")
+            return False
+    except Exception as e:
+        print(f"[!] Tor install failed: {e}")
+        return False
+    return shutil.which("tor") is not None
+
+
 def update_git():
     print("[*] Updating via git pull...")
     try:
@@ -65,6 +87,8 @@ def update_git():
             print(f"[+] Updated successfully!")
             if result.stdout.strip():
                 print(f"    {result.stdout.strip()}")
+            _ensure_tor_installed()
+            _ensure_python_socks()
             return True
         else:
             print(f"[!] Git pull failed: {result.stderr.strip()}")
@@ -72,6 +96,30 @@ def update_git():
     except Exception as e:
         print(f"[!] Update failed: {e}")
         return False
+
+
+def _ensure_python_socks():
+    """Install python-socks into the venv if ribbons (Telethon proxy) needs it."""
+    launcher_py = os.path.join(INSTALL_DIR, "venv", "bin", "python")
+    if not os.path.exists(launcher_py):
+        return
+    try:
+        subprocess.run(
+            [launcher_py, "-m", "pip", "install", "python-socks", "telethon",
+             "requests", "aiohttp"],
+            capture_output=True, text=True, timeout=120)
+    except Exception:
+        pass
+
+
+def _ensure_python_socks_system():
+    """Install python-socks for the system python (.pyz launcher uses it)."""
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "python-socks"],
+            capture_output=True, text=True, timeout=120)
+    except Exception:
+        pass
 
 
 def update_pyz(remote_data):
@@ -103,6 +151,8 @@ def update_pyz(remote_data):
         os.chmod(pyz_path, 0o755)
 
         print("[+] Updated successfully!")
+        _ensure_tor_installed()
+        _ensure_python_socks_system()
         return True
     except Exception as e:
         print(f"[!] Download failed: {e}")

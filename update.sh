@@ -20,6 +20,19 @@ if [ -d "$RIBIKS_DIR/.git" ]; then
     cd "$RIBIKS_DIR" || { echo "[!] Cannot access $RIBIKS_DIR"; exit 1; }
     git pull origin main
     echo ""
+    echo "[*] Checking Tor (required for anonymity)..."
+    if ! command -v tor &>/dev/null; then
+        echo "[i] Tor not found. Installing..."
+        if command -v pkg &>/dev/null; then
+            pkg install -y tor
+        elif command -v apt &>/dev/null; then
+            sudo apt install -y tor
+        else
+            echo "[!] Please install Tor manually: pkg install tor  (or: sudo apt install tor)"
+            echo "[i] Anonymity will be unavailable until Tor is installed."
+        fi
+    fi
+    echo ""
     echo "[*] Installing/updating dependencies..."
     if [ -d "$RIBIKS_DIR/venv" ]; then
         "$RIBIKS_DIR/venv/bin/pip" install telethon requests aiohttp python-socks 2>/dev/null || true
@@ -34,6 +47,24 @@ elif [ -f "$INSTALL_DIR/ribiks.pyz" ]; then
     curl -sL "https://github.com/felix47-web/ribiks/releases/latest/download/ribiks.pyz" -o "$INSTALL_DIR/ribiks.pyz"
     chmod +x "$INSTALL_DIR/ribiks.pyz"
     echo "[+] Updated .pyz to latest version!"
+
+    echo "[*] Checking Tor (required for anonymity)..."
+    if ! command -v tor &>/dev/null; then
+        echo "[i] Tor not found. Installing..."
+        if command -v pkg &>/dev/null; then
+            pkg install -y tor
+        elif command -v apt &>/dev/null; then
+            sudo apt install -y tor
+        else
+            echo "[!] Please install Tor manually: pkg install tor  (or: sudo apt install tor)"
+        fi
+    fi
+
+    echo "[*] Checking python-socks (Telethon proxy)..."
+    if ! python3 -c "import python_socks" 2>/dev/null; then
+        echo "[i] Installing python-socks..."
+        python3 -m pip install python-socks 2>/dev/null || true
+    fi
 
 else
     echo "[!] No existing installation found at:"
