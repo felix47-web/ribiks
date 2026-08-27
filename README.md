@@ -54,6 +54,13 @@ You'll be asked for:
 3. **Phone Number** - Your Telegram number (e.g. +234...)
 4. **OTP Code** - Sent to your Telegram
 5. **Your Gender** - Male/Female (tailors reply personality)
+6. **Anonymity** - Route Telegram through Tor (recommended)
+7. **Location** - Connection location (US or Germany)
+
+Ribiks anonymizes your Telegram connection through Tor by default so the
+login/activity is seen from your chosen location (US or Germany), not your
+device's real location. This requires the `tor` package (installed by
+`install.sh`, or manually with `pkg install tor` / `sudo apt install tor`).
 
 ### 3. Start Using
 
@@ -91,4 +98,5 @@ ribiks update
 ## Requirements
 
 - Python 3.8+
+- Tor (`pkg install tor` / `sudo apt install tor`) for anonymity
 - Telegram account

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 import sys
 import os
@@ -8,6 +8,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ribiks.menu import menu_main, run_check_cmd, run_groups_cmd, run_setup_cmd, run_config_cmd
 from ribiks.accounts import accounts_main
 from ribiks.hopin import hopin_main
+from ribiks.config import load_config
+from ribiks.tor import ensure_tor, stop_tor, is_tor_installed
 
 
 USAGE = """
@@ -28,15 +30,71 @@ USAGE = """
 """
 
 
+def _needs_telegram(cmd, args):
+    """Which commands actually open a Telegram connection and thus need Tor."""
+    if cmd == "check":
+        return True
+    if cmd == "groups":
+        return "-check" in args or "--check" in args
+    if cmd == "hopin":
+        return True
+    if cmd == "accounts":
+        action = args[1].lower() if len(args) > 1 else ""
+        # list reads the local file only; add/remove/toggle contact Telegram.
+        return action in ("add", "remove", "toggle")
+    return False
+
+
+def _start_tor_for_session():
+    """Start Tor if anonymity is enabled, returning False if it cannot run.
+
+    Called before any Telegram work so the MTProto connection uses the chosen
+    location (us|de). The `setup` command prompts for location itself, so it
+    is excluded here to avoid double-prompting.
+    """
+    cfg = load_config()
+    if not cfg.get("anonymity", True):
+        return True
+
+    if not is_tor_installed():
+        print("[!] Anonymity is enabled but Tor is not installed.")
+        print("[i] Install it, then run 'ribiks setup' again:")
+        print("    - Termux : pkg install tor")
+        print("    - Debian / Ubuntu / Kali : sudo apt install tor")
+        return True
+
+    return ensure_tor(cfg.get("exit_location", "us"))
+
+
 def main():
     args = sys.argv[1:]
 
     if not args:
-        menu_main()
+        try:
+            menu_main()
+        finally:
+            stop_tor()
         return
 
     cmd = args[0].lower()
 
+    if cmd == "setup":
+        # setup prompts for anonymity/location interactively; core.setup_auth
+        # routes the OTP login through Tor automatically via get_client().
+        run_setup_cmd()
+        return
+
+    if _needs_telegram(cmd, args) and not _start_tor_for_session():
+        print("[!] Tor could not be started; aborting to protect your location.")
+        sys.exit(1)
+
+    try:
+        _run_command(cmd, args)
+    finally:
+        stop_tor()
+
+
+def _run_command(cmd, args):
     if cmd == "check":
         run_check_cmd()
     elif cmd == "config":
@@ -46,8 +104,6 @@ def main():
             run_groups_cmd()
         else:
             print("[!] Usage: ribiks groups -check")
-    elif cmd == "setup":
-        run_setup_cmd()
     elif cmd == "update":
         from ribiks.updates import check_for_updates, do_update
         if "--check" in args:

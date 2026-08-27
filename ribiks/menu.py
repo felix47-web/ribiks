@@ -2,6 +2,7 @@ import os
 import sys
 
 from .config import load_config, load_accounts
+from .tor import ensure_tor, is_tor_installed
 from . import __version__, __codename__
 
 
@@ -31,6 +32,12 @@ def show_status():
     print(f"  [i] Phone    : {cfg.get('phone', 'Not set')}")
     print(f"  [i] API ID   : {'Set' if cfg.get('api_id') else 'Not set'}")
     print(f"  [i] Gender   : {(cfg.get('user_gender') or 'Not set').capitalize()}")
+    anon = cfg.get('anonymity', True)
+    loc = cfg.get('exit_location', 'us')
+    if anon:
+        print(f"  [i] Anonymity: ON (Tor) @ {loc.upper()} exit")
+    else:
+        print(f"  [i] Anonymity: OFF")
     print(f"  [i] Providers: Zen (free)")
     if cfg.get("groq_api_key"):
         print(f"               + Groq (fallback)")
@@ -101,6 +108,15 @@ def show_menu():
 
 
 def menu_main():
+    cfg = load_config()
+    if cfg.get("anonymity", True):
+        if not is_tor_installed():
+            print("  [i] Anonymity is enabled but Tor is not installed.")
+            print("      - Termux : pkg install tor")
+            print("      - Debian / Ubuntu / Kali : sudo apt install tor")
+        else:
+            ensure_tor(cfg.get("exit_location", "us"))
+
     while True:
         clear()
         show_menu()

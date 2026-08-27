@@ -22,7 +22,7 @@ if [ -d "$RIBIKS_DIR/.git" ]; then
     echo ""
     echo "[*] Installing/updating dependencies..."
     if [ -d "$RIBIKS_DIR/venv" ]; then
-        "$RIBIKS_DIR/venv/bin/pip" install telethon requests aiohttp 2>/dev/null || true
+        "$RIBIKS_DIR/venv/bin/pip" install telethon requests aiohttp python-socks 2>/dev/null || true
     fi
     echo "[+] Updated via git pull!"
     echo "[i] Version: $(python3 -c 'from ribiks import __version__; print(__version__)' 2>/dev/null || echo 'unknown')"

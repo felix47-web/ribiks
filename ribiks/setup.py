@@ -2,6 +2,49 @@ import asyncio
 
 from .config import load_config, save_config
 from .core import setup_auth
+from .tor import is_tor_installed
+
+
+def prompt_anonymity(cfg):
+    """Prompt for Tor-based anonymity and the connection location (US/Germany).
+
+    New users choose a concrete country (us or de). The location becomes the
+    Tor exit country Telegram sees for the MTProto connection.
+    """
+    print("\n  ── Anonymity ───────────────────────────")
+    print("  Route your Telegram connection through Tor")
+    print("  so Telegram sees a location you choose,")
+    print("  not your device's real location/country.")
+
+    if not is_tor_installed():
+        print("\n  [!] Tor is required for anonymity but is not installed.")
+        print("      - Termux : pkg install tor")
+        print("      - Debian / Ubuntu / Kali : sudo apt install tor")
+
+    anon = input("\n  [?] Route Telegram through Tor? (Y/n): ").strip().lower()
+    if anon in ("n", "no"):
+        cfg["anonymity"] = False
+        print("  [i] Anonymity disabled. Telegram will use your real location.")
+        return
+
+    cfg["anonymity"] = True
+
+    while True:
+        print("\n  [?] Select connection location (Tor exit country):")
+        print("      [1] United States")
+        print("      [2] Germany")
+        loc = input("  > Select (1/2): ").strip()
+        if loc == "1":
+            cfg["exit_location"] = "us"
+            break
+        elif loc == "2":
+            cfg["exit_location"] = "de"
+            break
+        else:
+            print("  [!] Invalid choice.")
+
+    print(f"  [i] Location set to: {cfg['exit_location'].upper()}")
+
 
 
 def run_setup():
@@ -53,6 +96,8 @@ def run_setup():
 
     print(f"[i] Gender set to: {cfg['user_gender'].capitalize()}")
 
+    prompt_anonymity(cfg)
+
     save_config(cfg)
 
     print("\n[*] Authenticating with Telegram...")
@@ -74,8 +119,10 @@ def run_config():
     print(f"  [3] Gender    : {(cfg.get('user_gender') or 'Not set').capitalize()}")
     print(f"  [4] AI Model  : {cfg.get('ai_model', 'free models')}")
     print(f"  [5] Reply Style: {cfg.get('reply_style', 'sweet and caring')}")
-    print(f"  [6] Groq Key  : {'Set' if cfg.get('groq_api_key') else 'Not set'}")
-    print(f"  [7] Together  : {'Set' if cfg.get('together_api_key') else 'Not set'}")
+    print(f"  [6] Anonymity : {'ON (Tor)' if cfg.get('anonymity', True) else 'OFF'}")
+    print(f"  [7] Location  : {cfg.get('exit_location', 'us').upper()}")
+    print(f"  [8] Groq Key  : {'Set' if cfg.get('groq_api_key') else 'Not set'}")
+    print(f"  [9] Together  : {'Set' if cfg.get('together_api_key') else 'Not set'}")
     print(f"  [0] Back\n")
 
     choice = input("  > Select to edit: ").strip()
@@ -108,6 +155,25 @@ def run_config():
         if val:
             cfg["reply_style"] = val
     elif choice == "6":
+        prompt_anonymity(cfg)
+    elif choice == "7":
+        if not cfg.get("anonymity", True):
+            print("  [!] Anonymity is OFF. Enable it (option 6) first.")
+        else:
+            while True:
+                print("      [1] United States")
+                print("      [2] Germany")
+                loc = input("  > Connection location (1/2): ").strip()
+                if loc == "1":
+                    cfg["exit_location"] = "us"
+                    break
+                elif loc == "2":
+                    cfg["exit_location"] = "de"
+                    break
+                else:
+                    print("  [!] Invalid choice.")
+            print(f"  [i] Location set to: {cfg['exit_location'].upper()}")
+    elif choice == "8":
         current = cfg.get("groq_api_key", "")
         masked = (current[:8] + "..." + current[-6:]) if current and len(current) > 14 else "Not set"
         print(f"  > Current: {masked}")
@@ -119,7 +185,7 @@ def run_config():
         elif val:
             cfg["groq_api_key"] = val
             print("[+] Groq key updated.")
-    elif choice == "7":
+    elif choice == "9":
         current = cfg.get("together_api_key", "")
         masked = (current[:8] + "..." + current[-6:]) if current and len(current) > 14 else "Not set"
         print(f"  > Current: {masked}")

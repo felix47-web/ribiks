@@ -7,6 +7,7 @@ setup(
     install_requires=[
         "telethon",
         "aiohttp",
+        "python-socks",
     ],
     entry_points={
         "console_scripts": [

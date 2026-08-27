@@ -15,6 +15,8 @@ DEFAULT_CONFIG = {
     "phone": None,
     "session_name": "ribiks_session",
     "proxy": None,
+    "anonymity": True,
+    "exit_location": "us",
     "ai_provider": "opencode",
     "ai_model": None,
     "groq_api_key": None,
@@ -40,8 +42,34 @@ def load_config():
     for k, v in cfg.items():
         if v is not None and v != "":
             merged[k] = v
+
+    # Migration: persist any newly-added defaults (e.g. anonymity/exit_location)
+    # so users who configured ribiks before a release see them in their config
+    # file and via the config editor, rather than only in-memory.
+    missing = [k for k in DEFAULT_CONFIG if k not in cfg]
+    if missing:
+        _migrate_config(cfg, missing)
+
     _config_cache = merged
     return merged.copy()
+
+
+def _migrate_config(cfg, missing_keys):
+    """Add newly-introduced default keys to an existing config file.
+
+    Existing settings are never touched; only keys that appeared in a newer
+    DEFAULT_CONFIG are appended with their defaults. This preserves user data
+    (API keys, model settings, etc.) while making new options visible/editable.
+    """
+    for k in missing_keys:
+        cfg[k] = DEFAULT_CONFIG[k]
+    try:
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(cfg, f, indent=2)
+    except Exception as e:
+        import sys
+        print(f"[config] could not persist new defaults to {CONFIG_PATH}: {e!r}",
+              file=sys.stderr)
 
 
 def save_config(cfg):

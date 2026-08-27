@@ -18,6 +18,19 @@ if ! command -v python3 &>/dev/null; then
     exit 1
 fi
 
+echo "[*] Checking Tor (required for anonymity)..."
+if ! command -v tor &>/dev/null; then
+    echo "[i] Tor not found. Installing..."
+    if command -v pkg &>/dev/null; then
+        pkg install -y tor
+    elif command -v apt &>/dev/null; then
+        sudo apt install -y tor
+    else
+        echo "[!] Please install Tor manually: pkg install tor  (or: sudo apt install tor)"
+        echo "[i] Anonymity will be unavailable until Tor is installed."
+    fi
+fi
+
 echo "[*] Creating virtual environment..."
 python3 -m venv "$VENV_DIR" || {
     echo "[!] venv failed, trying without pip..."
@@ -26,7 +39,7 @@ python3 -m venv "$VENV_DIR" || {
 
 echo "[*] Installing dependencies..."
 "$VENV_DIR/bin/pip" install --upgrade pip 2>/dev/null || true
-"$VENV_DIR/bin/pip" install telethon requests aiohttp
+"$VENV_DIR/bin/pip" install telethon requests aiohttp python-socks
 
 echo "[*] Setting up ribiks launcher..."
 cat > "$BIN_DIR/ribiks" << LAUNCHER
